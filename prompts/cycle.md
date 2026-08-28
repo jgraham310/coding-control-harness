@@ -58,7 +58,17 @@ useful thing that moves it:
 Work one item per cycle. Parallel lanes need file reservations
 (`reserveFiles`) so two lanes cannot edit the same paths.
 
-## 5. Report
+## 5. Feed back what you learned
+
+`node src/control-plane.mjs patterns` shows what keeps recurring. You do not
+promote patterns and you do not decide skill changes — both need the human.
+What you do is surface them in the brief with what you saw, so a real pattern
+gets a decision instead of accumulating.
+
+If a revision shows as **regressed**, say so plainly. A change that did not
+hold is more useful to report than a clean-looking cycle.
+
+## 6. Report
 
 Send the brief to the human on whatever channel you have. Lead with anything
 under **Needs you**; if that section is empty, say the cycle was quiet in one

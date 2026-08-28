@@ -5,7 +5,7 @@
  * certify its own work by asking this module nicely.
  */
 import { execFileSync } from 'node:child_process';
-import { ORDER, addEvidence, evidenceTypes, missingEvidence, setStatus, staleEvidence } from './control-plane.mjs';
+import { ORDER, addEvidence, evidenceTypes, missingEvidence, recordTransition, setStatus, staleEvidence } from './control-plane.mjs';
 
 export function gh(args) {
   const out = execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
@@ -102,10 +102,10 @@ export function syncRepo(state, repo, { now = new Date().toISOString(), fetch = 
         && record(item, 'verification_passed', `PR #${pr.number} checks green at ${pr.headRefOid}`, now, pr.headRefOid)) touched.push('verification_passed');
       if (checks === 'failing') {
         item.blockedReason = `PR #${pr.number} has failing checks at ${pr.headRefOid}`;
-        if (item.status !== 'blocked') { item.status = 'blocked'; item.statusAt = now; changes.push(`${item.id}: blocked on failing checks`); }
+        if (item.status !== 'blocked') { recordTransition(item, 'blocked', now); item.status = 'blocked'; item.statusAt = now; changes.push(`${item.id}: blocked on failing checks`); }
         continue;
       }
-      if (item.status === 'blocked' && checks !== 'failing') { delete item.blockedReason; item.status = 'reported_done'; }
+      if (item.status === 'blocked' && checks !== 'failing') { delete item.blockedReason; recordTransition(item, 'reported_done', now); item.status = 'reported_done'; }
       const before = item.status;
       const after = advance(item, now);
       if (before !== after) changes.push(`${item.id}: ${before} → ${after}`);

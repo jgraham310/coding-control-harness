@@ -280,6 +280,66 @@ observed, it belongs in the runner, alongside the `PreToolUse` hook.
 With no catalog configured the feature is simply unused — it does not nag about
 every item.
 
+## Learning from what actually happened
+
+A skill that keeps producing blocked work is a fact in the traces long before
+anyone notices it. This closes the loop from those traces to a skill that
+changed because of them, and — the part that usually goes missing — measures
+whether the change worked.
+
+```text
+traces → observed pattern → promoted (a person agreed) → skill revision
+       → measured outcome (did the signal stop?)
+```
+
+```sh
+node src/control-plane.mjs patterns
+node src/control-plane.mjs promote-pattern skill_ineffective:unlazy jason "applied to work it does not fit"
+node src/control-plane.mjs record-revision unlazy skill_ineffective:unlazy 2.1.0 jason "narrowed when-to-use"
+```
+
+**Patterns are derived, never stored as opinion.** They are recomputed from the
+record on every run, so narrowing the window changes them and nothing can go
+stale in the file. Three kinds are reported today:
+
+| Kind | Derived from | Says |
+| --- | --- | --- |
+| `repeated_block` | lifecycle transitions | one item keeps getting stuck |
+| `rule_friction` | the denial log | the agent keeps hitting one rail |
+| `skill_ineffective` | routes + transitions | work sent to a skill goes wrong afterwards |
+
+A single bad day is not a pattern: nothing below three occurrences is reported,
+and `skill_ineffective` counts only blocks that happened *after* the routing
+decision, so a skill is never blamed for what preceded it.
+
+**Promotion needs a person.** Only a pattern the traces currently show can be
+promoted, and promotion snapshots the count that justified it. A revision must
+answer a promoted pattern and carry a findable identifier — a version or a
+commit — and its author.
+
+**A revision is a hypothesis, not a fix.** `assessRevisions` marks it `held`
+only after the pattern has not recurred for a settle window (default seven
+days). Any recurrence afterwards marks it `regressed`, however good the change
+looked, and the pattern goes back to unanswered. Nothing is closed by
+declaration.
+
+`held` is a standing claim about the present, not a verdict earned once. Every
+revision is re-assessed on every pass, so a pattern that returns months later
+still overturns a revision that had held — a fix that stopped working is
+exactly what this loop exists to catch.
+
+The brief carries a **Skill loop** section: regressions first, then confirmed
+patterns nothing has answered, then what is recurring and unreviewed.
+
+### What this does not do
+
+It does not write the skill change. Deriving "these keep getting blocked" is
+arithmetic; deciding what to do about it is judgement, and the harness does not
+hold judgement. It also does not pronounce a revision good — it reports only
+whether the signal that motivated it came back. Both limits are the same rule
+as everywhere else here: the thing measuring the work is not the thing doing
+it.
+
 ## Safety rails
 
 Rules live in `state.json` and are enforced by `hooks/safety-rules.mjs`, which
