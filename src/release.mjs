@@ -97,6 +97,49 @@ export async function mergeCheckState(repoName, sha, { api = ghApi } = {}) {
   return rollupState([...parse(runs), ...parse(statuses)]);
 }
 
+/**
+ * The version endpoint is the deployment describing itself. That is one
+ * witness, and a compromised or misconfigured one can report a syntactically
+ * valid SHA that is not what is running. This asks an independent source what
+ * was deployed and requires the two to agree.
+ *
+ * It cannot make the claim unforgeable — something must be trusted — but it
+ * raises forgery from "compromise the app" to "compromise the app and the
+ * deployment record, consistently".
+ *
+ * ponytail: two source kinds, both returning a bare SHA. Add a third only when
+ * a real deployment target cannot be read through either.
+ */
+export async function corroborate(repoName, release, deployed, { api = ghApi, run = shellRun } = {}) {
+  const source = release.corroborate;
+  if (!source) return { witnesses: 1, sources: ['the deployment\'s own version endpoint'] };
+
+  let reported;
+  if (source.deployments) {
+    const route = `repos/${repoName}/deployments?environment=${encodeURIComponent(source.deployments)}&per_page=1`;
+    const result = await api(['api', route, '--jq', '.[0].sha']);
+    if (!result.ok) throw new Error(`cannot read deployments for ${source.deployments}: ${result.output}`);
+    reported = result.output.trim();
+  } else if (source.command) {
+    const result = await run(source.command, { timeoutMs: release.timeoutMs });
+    if (!result.ok) throw new Error(`corroborating command failed: ${result.output}`);
+    reported = result.output.trim();
+  } else {
+    throw new Error('release.corroborate needs either `deployments` or `command`.');
+  }
+
+  assertSha(reported, `the commit reported by the corroborating source`);
+  // Short and long forms of the same commit agree.
+  const [shorter, longer] = [reported, deployed].sort((a, b) => a.length - b.length);
+  if (!longer.toLowerCase().startsWith(shorter.toLowerCase())) {
+    throw new Error(`sources disagree about what is live: the version endpoint says ${deployed}, ${source.deployments ? `the ${source.deployments} deployment record` : 'the corroborating command'} says ${reported}`);
+  }
+  return {
+    witnesses: 2,
+    sources: ['the deployment\'s own version endpoint', source.deployments ? `the ${source.deployments} deployment record` : 'a corroborating command'],
+  };
+}
+
 export async function liveCommit(release, { get = httpGet } = {}) {
   const { status, body } = await get(release.versionUrl, { timeoutMs: release.timeoutMs });
   if (status !== 200) throw new Error(`${release.versionUrl} returned ${status}`);
@@ -142,8 +185,12 @@ export async function syncRelease(state, repo, { now = new Date().toISOString(),
   if (!release?.versionUrl || !candidates.length) return changes;
 
   let deployed;
+  let attestation;
   try {
     deployed = await liveCommit(release, { get });
+    // Disagreement between sources is a strong signal that something is wrong,
+    // so it stops the release pass rather than picking a winner.
+    attestation = await corroborate(repo.name, release, deployed, { api, run });
   } catch (error) {
     // Not knowing what is live is a reason to record nothing, never a reason
     // to assume the newest thing is live.
@@ -203,8 +250,11 @@ export async function syncRelease(state, repo, { now = new Date().toISOString(),
       commit: item.head,
       deployed,
       mergeCommit: item.mergeCommit,
+      witnesses: attestation.witnesses,
       source: `${results.length} smoke check(s) passed against ${repo.name} at ${deployed}, which contains merge ${item.mergeCommit}`
-        + (mergeChecks === 'passing' ? ` (CI green on the merge commit)` : ` (merge-commit CI not required by config, so the deployed artifact's own CI is unproven)`),
+        + (mergeChecks === 'passing' ? ` (CI green on the merge commit)` : ` (merge-commit CI not required by config, so the deployed artifact's own CI is unproven)`)
+        + `; deployed commit attested by ${attestation.sources.join(' and ')}`
+        + (attestation.witnesses === 1 ? ' only, which is self-reported and unconfirmed' : ''),
       observedAt: now,
     });
     setStatus(item, 'released', now);

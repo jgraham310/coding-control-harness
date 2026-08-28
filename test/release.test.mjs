@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { emptyState, evidenceTypes, missingEvidence, validateState } from '../src/control-plane.mjs';
-import { assertSha, containsCommit, liveCommit, mergeCheckState, pluck, releaseCandidates, runCheck, syncRelease } from '../src/release.mjs';
+import { assertSha, containsCommit, corroborate, liveCommit, mergeCheckState, pluck, releaseCandidates, runCheck, syncRelease } from '../src/release.mjs';
 
 const NOW = '2026-08-28T12:00:00Z';
 const MERGE = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -33,7 +33,7 @@ const board = (overrides = {}) => {
   return state;
 };
 
-const stub = ({ version = { build: { commit: LIVE } }, status = 200, checks = {}, compare = 'ahead', mergeCi = 'SUCCESS' } = {}) => ({
+const stub = ({ version = { build: { commit: LIVE } }, status = 200, checks = {}, compare = 'ahead', mergeCi = 'SUCCESS', deployRecord = LIVE } = {}) => ({
   get: async (url) => {
     if (url.endsWith('/version')) return { status, body: JSON.stringify(version) };
     return { status: checks[url] ?? (url.endsWith('/me') ? 401 : 200), body: 'ok' };
@@ -42,6 +42,7 @@ const stub = ({ version = { build: { commit: LIVE } }, status = 200, checks = {}
     const route = args[1];
     if (route.includes('/compare/')) return { ok: true, output: compare };
     if (route.endsWith('/check-runs')) return { ok: true, output: mergeCi ? JSON.stringify({ status: 'COMPLETED', conclusion: mergeCi }) : '' };
+    if (route.includes('/deployments')) return { ok: true, output: deployRecord };
     return { ok: true, output: '' };
   },
   run: async () => ({ ok: true, output: '' }),
@@ -177,4 +178,47 @@ assert.match(state2.workItems[0].evidence.at(-1).source, /the deployed artifact'
 assert.equal(await mergeCheckState('a/b', MERGE, { api: async () => ({ ok: true, output: '' }) }), 'none');
 assert.equal(await mergeCheckState('a/b', MERGE, { api: async (args) => ({ ok: true, output: args[1].endsWith('/status') ? JSON.stringify({ state: 'SUCCESS' }) : '' }) }), 'passing', 'external CI reports as commit statuses');
 await assert.rejects(() => mergeCheckState('a/b', MERGE, { api: async () => ({ ok: false, output: '404' }) }), /cannot read checks/);
+
+// --- the version endpoint is one witness, not proof ---
+
+// Unattested, the evidence says so in as many words rather than implying more.
+state2 = board();
+await syncRelease(state2, state2.repos[0], { now: NOW, ...stub() });
+assert.equal(state2.workItems[0].evidence.at(-1).witnesses, 1);
+assert.match(state2.workItems[0].evidence.at(-1).source, /self-reported and unconfirmed/);
+
+// With a second source configured, both must agree before anything is certified.
+const attested = () => {
+  const built = board();
+  built.repos[0].release.corroborate = { deployments: 'production' };
+  return built;
+};
+state2 = attested();
+await syncRelease(state2, state2.repos[0], { now: NOW, ...stub() });
+assert.equal(state2.workItems[0].status, 'released');
+assert.equal(state2.workItems[0].evidence.at(-1).witnesses, 2);
+assert.match(state2.workItems[0].evidence.at(-1).source, /attested by the deployment's own version endpoint and the production deployment record/);
+assert.ok(!state2.workItems[0].evidence.at(-1).source.includes('unconfirmed'));
+
+// A lying endpoint that reports a well-formed but wrong SHA is caught.
+state2 = attested();
+out = await syncRelease(state2, state2.repos[0], { now: NOW, ...stub({ deployRecord: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' }) });
+assert.match(out.join('\n'), /sources disagree about what is live/);
+assert.equal(state2.workItems[0].status, 'verified', 'disagreement certifies nothing');
+
+// Short and long forms of the same commit are the same commit.
+assert.equal((await corroborate('a/b', { corroborate: { deployments: 'prod' } }, LIVE, { api: async () => ({ ok: true, output: LIVE.slice(0, 7) }) })).witnesses, 2);
+
+// A corroborating source that cannot be read is a refusal, not a fallback to the single witness.
+state2 = attested();
+out = await syncRelease(state2, state2.repos[0], { now: NOW, get: stub().get, run: stub().run, api: async (args) => (args[1].includes('/deployments') ? { ok: false, output: '404' } : stub().api(args)) });
+assert.match(out.join('\n'), /cannot read deployments for production/);
+assert.equal(state2.workItems[0].status, 'verified');
+
+// The corroborating source is untrusted input too.
+await assert.rejects(() => corroborate('a/b', { corroborate: { deployments: 'p' } }, LIVE, { api: async () => ({ ok: true, output: '$(id)' }) }), /is not a commit SHA/);
+await assert.rejects(() => corroborate('a/b', { corroborate: {} }, LIVE, {}), /needs either `deployments` or `command`/);
+assert.equal((await corroborate('a/b', { corroborate: { command: 'kubectl get ...' } }, LIVE, { run: async () => ({ ok: true, output: `${LIVE}\n` }) })).witnesses, 2);
+await assert.rejects(() => corroborate('a/b', { corroborate: { command: 'x' } }, LIVE, { run: async () => ({ ok: false, output: 'boom' }) }), /corroborating command failed/);
+
 console.log('release adapter tests: passed');

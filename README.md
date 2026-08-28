@@ -160,7 +160,8 @@ So for each verified, merged item the adapter:
 4. Runs the smoke checks once per deployment. All must pass. A failure blocks
    the item, naming the live commit and the checks that failed.
 5. Records `release_smoke_passed` bound to the item's own head, with the
-   deployed and merge SHAs alongside for audit, and moves it to `released`.
+   deployed and merge SHAs and the number of independent witnesses to the
+   deployed commit alongside for audit, and moves it to `released`.
 
 An empty `checks` list refuses to certify rather than passing vacuously. And
 because the evidence is commit-bound like every other gate, a later push to the
@@ -170,6 +171,37 @@ If your repositories do not run CI on merge commits, set
 `"requireMergeChecks": false`. Step 3 is then skipped and the recorded evidence
 says so in as many words — the claim becomes "smoke passed" rather than "the
 deployed artifact was tested", and the audit trail shows which one you have.
+
+### Attesting what is actually live
+
+`versionUrl` is the deployment describing itself. That is one witness, and
+syntactic validation does not make it truthful: a compromised or misconfigured
+endpoint can report a well-formed SHA that is not what is running. Name a
+second, independent source and the two must agree:
+
+```json
+"corroborate": { "deployments": "production" }
+```
+
+That reads GitHub's own deployment record for the environment. For a target
+GitHub does not know about, use a command that prints the live SHA:
+
+```json
+"corroborate": { "command": "kubectl get deploy/api -o jsonpath='{...}'" }
+```
+
+Disagreement stops the release pass and certifies nothing — two sources
+diverging is a strong signal that something is wrong, and picking a winner
+would defeat the point. A corroborating source that cannot be read is likewise
+a refusal, never a quiet fall back to the single witness.
+
+This raises forgery from "compromise the application" to "compromise the
+application and the deployment record, consistently". It does not make the
+claim unforgeable — **something must be trusted, and the harness cannot escape
+that by adding sources.** What it can do is be honest about which it had: the
+recorded evidence carries a `witnesses` count, and with one it says the
+deployed commit was *self-reported and unconfirmed* rather than implying a
+proof that was never obtained.
 
 ### Trust boundary
 
