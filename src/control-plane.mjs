@@ -344,7 +344,9 @@ export const LOCK_STALE_MS = 15 * 60 * 1000;
 // ponytail: a lock left by a killed process is broken after LOCK_STALE_MS, and
 // two processes breaking the same stale lock race — the loser gets EEXIST and
 // exits. Reach for a real lease only if cycles start running on many hosts.
-export function withLock(cwd, fn) {
+// Anything held longer than LOCK_STALE_MS is at risk of being broken under it,
+// so keep slow work inside the section bounded by its own timeouts.
+export async function withLock(cwd, fn) {
   const lock = path.join(path.dirname(statePath(cwd)), '.lock');
   let handle;
   try {
@@ -360,7 +362,9 @@ export function withLock(cwd, fn) {
   }
   try {
     fs.writeSync(handle, `${process.pid}\n`);
-    return fn();
+    // Awaited, so an async critical section holds the lock until it finishes
+    // rather than releasing it the moment it returns a promise.
+    return await fn();
   } finally {
     fs.closeSync(handle);
     fs.rmSync(lock, { force: true });
@@ -378,13 +382,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(`${target}\n${directionPath(cwd)}`);
   } else if (command === 'sync') {
     const { syncAll } = await import('./github.mjs');
-    const changes = withLock(cwd, () => {
+    const changes = await withLock(cwd, () => {
       const state = readState(cwd);
       const observed = syncAll(state);
       writeState(cwd, state);
       return observed;
     });
     console.log(changes.length ? changes.join('\n') : 'sync: no changes observed');
+  } else if (command === 'smoke') {
+    const { syncAllReleases } = await import('./release.mjs');
+    const changes = await withLock(cwd, async () => {
+      const state = readState(cwd);
+      const observed = await syncAllReleases(state, {});
+      if (observed.length) writeState(cwd, state);
+      return observed;
+    });
+    console.log(changes.length ? changes.join('\n') : 'smoke: nothing awaiting release');
   } else if (command === 'next') {
     const state = readState(cwd);
     const ranked = rank(state, { direction: readDirection(cwd) });
@@ -393,7 +406,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       : 'next: board is empty');
   } else if (command === 'brief') {
     const now = new Date().toISOString();
-    const { brief, notify } = withLock(cwd, () => {
+    const { brief, notify } = await withLock(cwd, () => {
       const state = readState(cwd);
       const since = state.briefs?.at(-1)?.at;
       const rendered = renderBrief(state, { direction: readDirection(cwd), since, now, denials: readDenials(path.dirname(statePath(cwd)), since) });
@@ -417,7 +430,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else if (command === 'board') {
     console.log(JSON.stringify(readState(cwd).workItems.map(({ id, title, owner, status, statusAt }) => ({ id, title, owner, status, statusAt })), null, 2));
   } else if (command === 'pilot-report') {
-    console.log(withLock(cwd, () => {
+    console.log(await withLock(cwd, () => {
       const state = readState(cwd);
       const pilot = state.pilots.find((candidate) => candidate.id === process.argv[3]);
       if (!pilot) throw new Error(`Unknown pilot: ${process.argv[3] || '(id required)'}`);
@@ -436,7 +449,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }));
   } else if (command === 'record-pilot-decision') {
     const [pilotId, decision, decidedBy] = process.argv.slice(3);
-    withLock(cwd, () => {
+    await withLock(cwd, () => {
       const state = readState(cwd);
       recordPilotDecision(state, pilotId, decision, decidedBy);
       writeState(cwd, state);
@@ -446,6 +459,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(['Usage: node src/control-plane.mjs <command>', '',
       '  init                     create state.json and direction.md',
       '  sync                     observe configured repos via gh and record evidence',
+      '  smoke                    observe production and record release evidence',
       '  next                     print the prioritised queue',
       '  brief                    write and print the standing report for the human',
       '  validate                 check the state file',

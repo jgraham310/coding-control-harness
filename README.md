@@ -70,6 +70,7 @@ npm run cycle        # sync from GitHub, validate, write a brief
 | Command | What it does |
 | --- | --- |
 | `sync` | Observes issues, PRs, and checks via `gh`; records evidence |
+| `smoke` | Observes production; records release evidence (see below) |
 | `next` | Prints the ranked queue with the reason for each position |
 | `brief` | Writes and prints the report for you, since the last brief |
 | `validate` | Fails if the state file contradicts its own evidence |
@@ -112,6 +113,54 @@ and writes state through a temp file and a rename, so overlapping cycles cannot
 interleave a read-modify-write or leave a truncated state file. A second cycle
 that finds the lock held exits rather than racing. A lock left behind by a
 killed process is broken after fifteen minutes.
+
+## Release evidence
+
+`src/release.mjs` observes production and records `release_smoke_passed`. Like
+the GitHub adapter it only observes: it does not deploy, promote, roll back, or
+restart anything, so the component certifying a release is never the one
+performing it.
+
+```json
+"release": {
+  "versionUrl": "https://api.example.com/version",
+  "commitPath": "build.commit",
+  "checks": [
+    { "name": "health", "url": "https://api.example.com/health", "expectStatus": 200 },
+    { "name": "auth-required", "url": "https://api.example.com/me", "expectStatus": 401 },
+    { "name": "orders", "command": "./scripts/smoke-orders.sh" }
+  ]
+}
+```
+
+`versionUrl` must report the commit currently deployed; `commitPath` is a
+dotted path into the JSON (omit it if the body is the bare SHA). Checks are
+HTTP assertions (`expectStatus`, `expectBody` regex) or shell commands judged
+by exit code.
+
+```sh
+node src/control-plane.mjs smoke
+```
+
+The load-bearing question is not "did the smoke checks pass" but **"did they
+pass against code that actually contains this item"**. A green run against a
+deployment that predates the merge proves nothing about the merge. So for each
+verified, merged item the adapter:
+
+1. Reads the live commit from `versionUrl`. If it cannot determine what is
+   deployed, it records nothing — it never assumes the newest thing is live.
+2. Confirms via `gh api compare` that the live commit **contains the item's
+   merge commit**. The PR head is not the deployed code — a squash or merge
+   commit is — so containment, not equality, is the test. Not contained, or
+   diverged, means the item stays `verified` and waits.
+3. Runs the smoke checks once per deployment. All must pass. A failure blocks
+   the item, naming the live commit and the checks that failed.
+4. Records `release_smoke_passed` bound to the item's own head, with the
+   deployed SHA alongside for audit, and moves it to `released`.
+
+An empty `checks` list refuses to certify rather than passing vacuously. And
+because the evidence is commit-bound like every other gate, a later push to the
+item retires its release evidence along with its verification.
 
 ## Safety rails
 
@@ -183,12 +232,11 @@ it maps observations to evidence:
 A queued or in-progress check is pending, never passing, so a PR cannot be
 verified while its checks are still running.
 
-`released` is deliberately out of reach: it needs `release_smoke_passed`, which
-no GitHub observation supplies. Write that adapter against your own production
-smoke checks. Each state requires the whole chain beneath it, so nothing skips
-a gate.
+`released` needs `release_smoke_passed`, which no GitHub observation supplies.
+`src/release.mjs` provides it by observing production directly. Each state
+requires the whole chain beneath it, so nothing skips a gate.
 
-**Verification is bound to a commit.** `verification_passed` and
+**Verification and release are bound to a commit.** `verification_passed` and
 `release_smoke_passed` record the commit they were observed on. When a PR head
 moves, evidence for the old commit stops satisfying the gate and the item falls
 back to `reported_done` until the new head is verified in its own right. The

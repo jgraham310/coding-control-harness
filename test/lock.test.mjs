@@ -12,21 +12,34 @@ execFileSync('node', [CLI, 'init'], { cwd, encoding: 'utf8' });
 const lock = path.join(cwd, 'ops', 'coding-control', '.lock');
 
 // One writer at a time.
-withLock(cwd, () => {
+await withLock(cwd, async () => {
   assert.ok(fs.existsSync(lock));
-  assert.throws(() => withLock(cwd, () => 'should never run'), /refusing to write concurrently/);
+  await assert.rejects(() => withLock(cwd, () => 'should never run'), /refusing to write concurrently/);
 });
 assert.ok(!fs.existsSync(lock), 'the lock is released on the way out');
 
 // Released even when the critical section throws, or a crash wedges every later cycle.
-assert.throws(() => withLock(cwd, () => { throw new Error('boom'); }), /boom/);
+await assert.rejects(() => withLock(cwd, () => { throw new Error('boom'); }), /boom/);
 assert.ok(!fs.existsSync(lock), 'the lock is released when the body throws');
+
+// An async critical section must hold the lock until it actually finishes,
+// not until it returns a promise.
+let observedInside = false;
+const slow = withLock(cwd, async () => {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  observedInside = fs.existsSync(lock);
+  return 'done';
+});
+await assert.rejects(() => withLock(cwd, () => 'should never run'), /refusing to write concurrently/, 'the lock is held across an await');
+assert.equal(await slow, 'done');
+assert.ok(observedInside, 'the lock still existed when the async body finished');
+assert.ok(!fs.existsSync(lock));
 
 // A lock left behind by a killed process is broken once it is stale.
 fs.writeFileSync(lock, '99999\n');
 const stale = Date.now() - LOCK_STALE_MS - 1000;
 fs.utimesSync(lock, stale / 1000, stale / 1000);
-assert.equal(withLock(cwd, () => 'ran'), 'ran', 'a stale lock does not wedge the loop forever');
+assert.equal(await withLock(cwd, () => 'ran'), 'ran', 'a stale lock does not wedge the loop forever');
 
 // State writes are atomic: no partial file is ever visible at the real path.
 const statePath = path.join(cwd, 'ops', 'coding-control', 'state.json');

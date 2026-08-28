@@ -71,7 +71,7 @@ export function syncRepo(state, repo, { now = new Date().toISOString(), fetch = 
   }
 
   const prs = fetch(['pr', 'list', '--repo', repo.name, '--state', 'all', '--limit', '100',
-    '--json', 'number,title,url,state,isDraft,createdAt,headRefOid,statusCheckRollup,closingIssuesReferences']);
+    '--json', 'number,title,url,state,isDraft,createdAt,headRefOid,mergeCommit,mergedAt,statusCheckRollup,closingIssuesReferences']);
 
   for (const pr of prs) {
     for (const linked of pr.closingIssuesReferences || []) {
@@ -89,6 +89,8 @@ export function syncRepo(state, repo, { now = new Date().toISOString(), fetch = 
       if (priorHead && priorHead !== item.head && staleEvidence(item).length) {
         changes.push(`${item.id}: head moved ${priorHead.slice(0, 7)} → ${item.head.slice(0, 7)}; verification of the old commit no longer counts`);
       }
+      // The merge commit, not the PR head, is what a deployment can contain.
+      if (pr.mergedAt && pr.mergeCommit?.oid) { item.mergeCommit = pr.mergeCommit.oid; item.mergedAt = pr.mergedAt; }
       const touched = [];
       if (record(item, 'executor_started', `PR #${pr.number} opened ${pr.createdAt}`, pr.createdAt)) touched.push('executor_started');
       if (!pr.isDraft && record(item, 'executor_result', `PR #${pr.number} ready for review`, now)) touched.push('executor_result');
