@@ -21,7 +21,7 @@ export const EVIDENCE_FOR = {
 export function emptyState() {
   return {
     schema: 'coding_control_state/v1',
-    workItems: [], checkpoints: [], fileReservations: [], memory: { proposals: [], reviews: [] }, safetyRules: [], pilots: [],
+    workItems: [], checkpoints: [], fileReservations: [], memory: { proposals: [], reviews: [] }, safetyRules: [], pilots: [], skills: [],
   };
 }
 
@@ -188,6 +188,9 @@ export function validateState(state) {
     if (!LIFECYCLE.includes(item.status)) errors.push(`${item.id}: invalid lifecycle state.`);
     const missing = missingEvidence(item);
     if (missing.length) errors.push(`${item.id}: ${item.status} missing ${missing.join(', ')}.`);
+    if (item.route && !(state.skills || []).some((skill) => skill.id === item.route.skill)) {
+      errors.push(`${item.id}: routed to unknown skill "${item.route.skill}".`);
+    }
     const evidencePrs = evidencePrNumbers(item);
     if (evidencePrs.length > 1) errors.push(`${item.id}: evidence cites multiple PRs (${evidencePrs.join(', ')}); resolve the canonical PR.`);
     if (evidencePrs.length === 1 && item.pr !== evidencePrs[0]) {
@@ -255,6 +258,38 @@ export function parseDirection(text = '') {
   };
 }
 
+/**
+ * Which approach applies to a piece of work. The harness cannot make an agent
+ * consult the catalog — a rule an agent calls on itself is not a control — so
+ * it does the part that survives a misbehaving agent instead: it records the
+ * choice and makes its absence visible. Work advanced with no recorded
+ * approach shows up in the brief as exactly that.
+ */
+export function suggestSkills(state, item) {
+  const subject = `${item.title || ''} ${(item.labels || []).join(' ')} ${item.repository || ''}`;
+  return (state.skills || []).filter((skill) => {
+    try { return !skill.match || new RegExp(skill.match, 'i').test(subject); } catch { return false; }
+  });
+}
+
+export function recordRoute(state, workItemId, { skill, decidedBy, why }, at = new Date().toISOString()) {
+  const item = state.workItems.find((candidate) => candidate.id === workItemId);
+  if (!item) throw new Error(`Unknown work item: ${workItemId}`);
+  if (!decidedBy) throw new Error('A route requires the decision maker.');
+  if (!(state.skills || []).some((candidate) => candidate.id === skill)) {
+    throw new Error(`Unknown skill: ${skill}. Add it to the catalog before routing work to it.`);
+  }
+  item.route = { skill, decidedBy, why, at };
+  return item.route;
+}
+
+// Only meaningful once a catalog exists; an empty catalog means the feature is
+// unused, not that every item is adrift.
+export function unroutedItems(state) {
+  if (!(state.skills || []).length) return [];
+  return state.workItems.filter((item) => ACTIVE.has(item.status) && item.status !== 'prepared' && !item.route);
+}
+
 const RANK_RULES = [
   { when: (item) => item.status === 'blocked', score: 900, why: 'blocked — needs a decision' },
   { when: (item) => item.status === 'verified', score: 700, why: 'verified — ready to release' },
@@ -280,6 +315,7 @@ export function rank(state, { direction = { pinned: [], notNow: [] }, now = new 
       if (deferred.has(item.id)) score -= 2000;
       return {
         item, score: Math.round(score), idleHours: Math.round(idleHours),
+        skills: suggestSkills(state, item).map((skill) => skill.id),
         why: [pinnedAt >= 0 && 'pinned in direction.md', deferred.has(item.id) && 'deferred by direction.md', rule?.why].filter(Boolean).join('; '),
       };
     })
@@ -316,7 +352,8 @@ export function renderBrief(state, { direction = { pinned: [] }, since, now = ne
     '\n## Working on next\n',
     list(ranked.slice(0, limit).map((entry, index) => `${index + 1}. **${entry.item.id}** ${entry.item.title} — ${entry.why} (idle ${entry.idleHours}h)`), '- Board is empty.'),
     '\n## In flight\n',
-    list(state.workItems.filter((item) => ACTIVE.has(item.status)).map((item) => `- **${item.id}** \`${item.status}\` ${item.repository ? `${item.repository}#${item.issue || '?'}` : ''}${item.pr ? ` PR #${item.pr}` : ''}`), '- Nothing in flight.'),
+    list(state.workItems.filter((item) => ACTIVE.has(item.status)).map((item) => `- **${item.id}** \`${item.status}\` ${item.repository ? `${item.repository}#${item.issue || '?'}` : ''}${item.pr ? ` PR #${item.pr}` : ''}`
+      + (item.route ? ` — via **${item.route.skill}** (${item.route.decidedBy})` : (state.skills || []).length ? ' — **no recorded approach**' : '')), '- Nothing in flight.'),
     `\n## Steering\n\nEdit \`ops/coding-control/direction.md\` to change priorities. Pinned right now: ${direction.pinned?.length ? direction.pinned.join(', ') : 'none'}.\n`,
   ].join('\n');
 }
@@ -402,8 +439,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const state = readState(cwd);
     const ranked = rank(state, { direction: readDirection(cwd) });
     console.log(ranked.length
-      ? ranked.map((entry, index) => `${index + 1}. ${entry.item.id} [${entry.item.status}] ${entry.item.title} — ${entry.why}`).join('\n')
+      ? ranked.map((entry, index) => `${index + 1}. ${entry.item.id} [${entry.item.status}] ${entry.item.title} — ${entry.why}`
+        + (entry.item.route ? ` | routed: ${entry.item.route.skill}` : entry.skills.length ? ` | applicable: ${entry.skills.join(', ')}` : '')).join('\n')
       : 'next: board is empty');
+  } else if (command === 'route') {
+    const [workItemId, skill, decidedBy, ...why] = process.argv.slice(3);
+    await withLock(cwd, () => {
+      const state = readState(cwd);
+      recordRoute(state, workItemId, { skill, decidedBy, why: why.join(' ') || undefined });
+      writeState(cwd, state);
+    });
+    console.log(`routed ${workItemId} to ${skill}`);
   } else if (command === 'brief') {
     const now = new Date().toISOString();
     const { brief, notify } = await withLock(cwd, () => {
@@ -460,7 +506,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       '  init                     create state.json and direction.md',
       '  sync                     observe configured repos via gh and record evidence',
       '  smoke                    observe production and record release evidence',
-      '  next                     print the prioritised queue',
+      '  next                     print the prioritised queue and applicable skills',
+      '  route ID SKILL BY [WHY]  record which approach was chosen for a work item',
       '  brief                    write and print the standing report for the human',
       '  validate                 check the state file',
       '  board                    dump the work item board',

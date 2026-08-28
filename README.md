@@ -228,6 +228,43 @@ run literal strings from your own `state.json`. No observed value is
 interpolated into either. Those files are as trusted as the machine running the
 cycle; treat write access to `state.json` as equivalent to shell access.
 
+## Which approach was taken
+
+Work of different kinds wants different handling, and "the agent chose badly"
+is invisible unless the choice is written down. Catalogue the approaches in
+`state.json`:
+
+```json
+"skills": [
+  { "id": "security-fix", "match": "security|CVE|vulnerab", "when": "A reported vulnerability. Patch, do not refactor." },
+  { "id": "dependency-bump", "match": "bump|upgrade|dependabot", "when": "A routine version bump." },
+  { "id": "feature", "when": "Anything else. No match pattern, so it always applies." }
+]
+```
+
+`match` is a regex tried against the item's title, labels, and repository;
+omit it for a catch-all. `next` lists the applicable skills per item, and the
+agent records which one it chose:
+
+```sh
+node src/control-plane.mjs route api#7 security-fix openclaw "CVE in the auth path"
+```
+
+A route must name a catalogued skill and a decider. Deleting a skill that work
+was routed to is a validation error, so the catalog cannot quietly drift out
+from under the record.
+
+**This records the choice; it does not force one.** A "consult a skill before
+acting" rule implemented here would be a rule the agent applies to itself,
+which is not a control — the same reason the lifecycle ledger is advisory.
+What the harness does instead is make the absence visible: active work with no
+recorded approach appears in the brief as **no recorded approach**, and stays
+there until someone explains it. If you want the step enforced rather than
+observed, it belongs in the runner, alongside the `PreToolUse` hook.
+
+With no catalog configured the feature is simply unused — it does not nag about
+every item.
+
 ## Safety rails
 
 Rules live in `state.json` and are enforced by `hooks/safety-rules.mjs`, which

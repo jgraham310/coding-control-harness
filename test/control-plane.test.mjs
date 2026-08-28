@@ -106,3 +106,43 @@ const withDenials = brief2(board, { direction: steered, now: '2026-08-27T01:00:0
 ] });
 assert.match(withDenials, /safety rule \*\*no-force-push\*\* stopped the agent 2×/);
 console.log('coding-control denial-surfacing test: passed');
+
+// --- which approach was taken, and when nobody recorded one ---
+import { recordRoute, suggestSkills, unroutedItems } from '../src/control-plane.mjs';
+
+const routed = emptyState();
+routed.skills = [
+  { id: 'security-fix', match: 'security|CVE|vulnerab', when: 'A reported vulnerability.' },
+  { id: 'dependency-bump', match: 'bump|upgrade|dependab', when: 'A routine version bump.' },
+  { id: 'feature', when: 'Anything else. No match pattern, so it always applies.' },
+];
+routed.workItems.push(
+  { id: 'W-1', title: 'Patch CVE-2026-1 in the auth path', owner: 'openclaw', status: 'running', statusAt: '2026-08-27T00:00:00Z', evidence: [{ type: 'executor_started', source: 'PR', observedAt: '2026-08-27T00:00:00Z' }] },
+  { id: 'W-2', title: 'Bump lockfile', owner: 'openclaw', status: 'prepared', statusAt: '2026-08-27T00:00:00Z', labels: ['dependabot'], evidence: [] },
+);
+assert.deepEqual(suggestSkills(routed, routed.workItems[0]).map((skill) => skill.id), ['security-fix', 'feature']);
+assert.deepEqual(suggestSkills(routed, routed.workItems[1]).map((skill) => skill.id), ['dependency-bump', 'feature'], 'labels are matched as well as titles');
+
+// Work in flight with nothing recorded is drift, and the brief says so.
+assert.deepEqual(unroutedItems(routed).map((item) => item.id), ['W-1'], 'prepared work has not been approached yet');
+assert.match(renderBrief(routed, { now: '2026-08-27T01:00:00Z' }), /\*\*W-1\*\* `running`.*no recorded approach/);
+
+recordRoute(routed, 'W-1', { skill: 'security-fix', decidedBy: 'openclaw', why: 'CVE in the auth path' }, '2026-08-27T00:30:00Z');
+assert.deepEqual(unroutedItems(routed), []);
+assert.match(renderBrief(routed, { now: '2026-08-27T01:00:00Z' }), /via \*\*security-fix\*\* \(openclaw\)/);
+assert.deepEqual(rank(routed, { now: '2026-08-27T01:00:00Z' })[0].skills, ['security-fix', 'feature']);
+
+// A route must name a real skill and a real decider, and drift into an unknown one is caught.
+assert.throws(() => recordRoute(routed, 'W-2', { skill: 'improvise', decidedBy: 'openclaw' }), /Unknown skill: improvise/);
+assert.throws(() => recordRoute(routed, 'W-2', { skill: 'feature' }), /requires the decision maker/);
+assert.throws(() => recordRoute(routed, 'nope', { skill: 'feature', decidedBy: 'x' }), /Unknown work item/);
+assert.deepEqual(validateState(routed), []);
+routed.workItems[0].route.skill = 'deleted-skill';
+assert.match(validateState(routed).join('\n'), /W-1: routed to unknown skill "deleted-skill"/);
+
+// With no catalog the feature is simply unused; it does not nag about every item.
+const noCatalog = emptyState();
+noCatalog.workItems.push({ id: 'X-1', title: 'x', owner: 'a', status: 'running', statusAt: '2026-08-27T00:00:00Z', evidence: [] });
+assert.deepEqual(unroutedItems(noCatalog), []);
+assert.ok(!renderBrief(noCatalog, { now: '2026-08-27T01:00:00Z' }).includes('no recorded approach'));
+console.log('coding-control routing tests: passed');
