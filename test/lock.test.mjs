@@ -49,6 +49,21 @@ execFileSync('node', [CLI, 'brief'], { cwd, encoding: 'utf8' });
 assert.ok(JSON.parse(fs.readFileSync(statePath, 'utf8')).briefs.length === 1);
 assert.deepEqual(fs.readdirSync(path.dirname(statePath)).filter((name) => name.endsWith('.tmp')), [], 'no temp files are left behind');
 
+// Every command must be able to load its adapter. Awaiting the dispatch at the
+// top level used to deadlock the ones whose adapter imports the control plane
+// back, so `sync` and `smoke` exited 13 without running at all.
+for (const [command, expected] of [['sync', /no changes observed/], ['smoke', /nothing awaiting release/], ['patterns', /nothing recurring/]]) {
+  const ran = spawnSync('node', [CLI, command], { cwd, encoding: 'utf8' });
+  assert.equal(ran.status, 0, `${command} exited ${ran.status}: ${ran.stderr}`);
+  assert.match(ran.stdout, expected);
+}
+
+// A command that throws reports the reason and fails the cycle, rather than
+// surfacing as an unhandled rejection.
+const failed = spawnSync('node', [CLI, 'route', 'nope', 'skill', 'jason', 'because'], { cwd, encoding: 'utf8' });
+assert.equal(failed.status, 1);
+assert.match(failed.stderr, /^Unknown work item: nope$/m);
+
 fs.rmSync(cwd, { recursive: true, force: true });
 console.log('lock tests: passed');
 

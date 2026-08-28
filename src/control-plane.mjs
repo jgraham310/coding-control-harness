@@ -505,7 +505,13 @@ export async function withLock(cwd, fn) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+/**
+ * The CLI runs from a function rather than from top-level `await`. An adapter
+ * that imports this module cannot finish loading while this module is itself
+ * still evaluating, so awaiting the dispatch at the top level deadlocked every
+ * command that lazily imports one — `sync` and `smoke` among them.
+ */
+async function main() {
   const [command = 'help'] = process.argv.slice(2);
   const cwd = process.cwd();
   if (command === 'init') {
@@ -663,4 +669,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       '  pilot-report PILOT_ID',
       '  record-pilot-decision PILOT_ID scale|adjust|stop DECIDED_BY'].join('\n'));
   }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  // A rejection here is a failed cycle, and it reports as one instead of as an
+  // unhandled rejection.
+  main().catch((error) => { console.error(error.message); process.exitCode = 1; });
 }
