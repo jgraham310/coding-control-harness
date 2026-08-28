@@ -10,6 +10,7 @@ import path from 'node:path';
 export const LIFECYCLE = ['prepared', 'running', 'reported_done', 'verified', 'blocked', 'released'];
 export const ACTIVE = new Set(['prepared', 'running', 'reported_done']);
 export const TERMINAL = new Set(['verified', 'released']);
+export const ORDER = ['prepared', 'running', 'reported_done', 'verified', 'released'];
 export const EVIDENCE_FOR = {
   running: ['executor_started'],
   reported_done: ['executor_result'],
@@ -24,8 +25,22 @@ export function emptyState() {
   };
 }
 
+// Evidence about a commit only counts for that commit. Once an item records a
+// head, a verification observed on an earlier commit stops satisfying its gate,
+// so a PR that moves after a green run falls back out of `verified` instead of
+// carrying stale proof forward into a release decision.
+export const COMMIT_BOUND = new Set(['verification_passed', 'release_smoke_passed']);
+
+export function isCurrent(item, entry) {
+  return !item.head || !COMMIT_BOUND.has(entry.type) || entry.commit === item.head;
+}
+
 export function evidenceTypes(item) {
-  return new Set((item.evidence || []).map((entry) => entry.type));
+  return new Set((item.evidence || []).filter((entry) => isCurrent(item, entry)).map((entry) => entry.type));
+}
+
+export function staleEvidence(item) {
+  return (item.evidence || []).filter((entry) => !isCurrent(item, entry));
 }
 
 // A PR mentioned in observed executor evidence is part of the canonical work
@@ -42,8 +57,20 @@ export function evidencePrNumbers(item) {
   return [...numbers];
 }
 
+// A later state implies every earlier gate. Without this, `released` needed
+// only a smoke record and an item could skip verification entirely.
+export function requiredEvidence(status) {
+  const index = ORDER.indexOf(status);
+  if (index < 0) return [];
+  return ORDER.slice(0, index + 1).flatMap((state) => EVIDENCE_FOR[state] || []);
+}
+
 export function missingEvidence(item, status = item.status) {
-  return (EVIDENCE_FOR[status] || []).filter((type) => !evidenceTypes(item).has(type));
+  return requiredEvidence(status).filter((type) => !evidenceTypes(item).has(type));
+}
+
+export function lastEvidenceAt(item) {
+  return (item.evidence || []).map((entry) => entry.observedAt).sort().pop() || item.statusAt;
 }
 
 export function setStatus(item, status, at = new Date().toISOString()) {
@@ -185,9 +212,164 @@ export function validateState(state) {
   return errors;
 }
 
+export const DIRECTION_TEMPLATE = `# Direction
+
+Edit this file. The CTO reads it at the start of every cycle and it outranks
+its own judgement. Nothing here is parsed except the Pinned list.
+
+## Pinned
+
+Work item ids listed here sort to the top, in order.
+
+- (none)
+
+## Standing instructions
+
+- Open a PR per work item; never merge your own work.
+- Ask before anything destructive or public-facing.
+
+## Not now
+
+- (nothing deferred)
+`;
+
+// Only the Pinned ids are parsed. Everything else is prose the agent reads.
+// ponytail: heading-scoped bullet scan, swap for a real parser if the file
+// grows structure worth validating.
+export function parseDirection(text = '') {
+  const sections = {};
+  let current = 'preamble';
+  for (const line of text.split('\n')) {
+    const heading = line.match(/^##\s+(.+?)\s*$/);
+    if (heading) { current = heading[1].toLowerCase(); sections[current] = []; continue; }
+    (sections[current] ||= []).push(line);
+  }
+  const bullets = (name) => (sections[name] || [])
+    .map((line) => line.match(/^\s*[-*]\s+(.+?)\s*$/)?.[1])
+    .filter((value) => value && !/^\(/.test(value));
+  return {
+    text,
+    pinned: bullets('pinned').map((value) => value.split(/\s+/)[0]),
+    standingInstructions: bullets('standing instructions'),
+    notNow: bullets('not now'),
+  };
+}
+
+const RANK_RULES = [
+  { when: (item) => item.status === 'blocked', score: 900, why: 'blocked — needs a decision' },
+  { when: (item) => item.status === 'verified', score: 700, why: 'verified — ready to release' },
+  { when: (item) => item.status === 'reported_done', score: 600, why: 'reported done — needs verification' },
+  { when: (item, stale) => item.status === 'running' && stale, score: 500, why: 'running but stale — no new evidence' },
+  { when: (item) => item.status === 'running', score: 300, why: 'in progress' },
+  { when: (item) => item.status === 'prepared', score: 200, why: 'ready to start' },
+];
+
+// ponytail: additive heuristic, no learning. If the ordering starts feeling
+// wrong, tune these weights before reaching for anything cleverer.
+export function rank(state, { direction = { pinned: [], notNow: [] }, now = new Date().toISOString(), staleHours = 24 } = {}) {
+  const nowMs = Date.parse(now);
+  const deferred = new Set(direction.notNow?.map((entry) => entry.split(/\s+/)[0]) || []);
+  return state.workItems
+    .filter((item) => !TERMINAL.has(item.status) || item.status === 'verified')
+    .map((item) => {
+      const idleHours = (nowMs - Date.parse(lastEvidenceAt(item) || now)) / 3.6e6;
+      const rule = RANK_RULES.find((candidate) => candidate.when(item, idleHours > staleHours));
+      const pinnedAt = direction.pinned?.indexOf(item.id) ?? -1;
+      let score = (rule?.score || 100) + Math.min(idleHours, 168) + (item.priority || 0) * 25;
+      if (pinnedAt >= 0) score += 1000 - pinnedAt;
+      if (deferred.has(item.id)) score -= 2000;
+      return {
+        item, score: Math.round(score), idleHours: Math.round(idleHours),
+        why: [pinnedAt >= 0 && 'pinned in direction.md', deferred.has(item.id) && 'deferred by direction.md', rule?.why].filter(Boolean).join('; '),
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+export function readDenials(dir, since) {
+  const file = path.join(dir, 'denials.jsonl');
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
+    .flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } })
+    .filter((entry) => !since || entry.at > since);
+}
+
+export function renderBrief(state, { direction = { pinned: [] }, since, now = new Date().toISOString(), limit = 5, denials = [] } = {}) {
+  const ranked = rank(state, { direction, now });
+  const moved = state.workItems.filter((item) => since && item.statusAt && item.statusAt > since);
+  const errors = validateState(state);
+  const awaitingDecision = (state.pilots || []).filter((pilot) => pilot.closeout?.reportedAt && !pilot.closeout?.decision);
+  const list = (rows, empty) => (rows.length ? rows.join('\n') : empty);
+  return [
+    `# CTO brief — ${now}`,
+    since ? `\nCovering changes since ${since}.` : '\nFirst brief; covering all current state.',
+    '\n## Needs you\n',
+    list([
+      ...ranked.filter((entry) => entry.item.status === 'blocked').map((entry) => `- **${entry.item.id}** ${entry.item.title} — blocked: ${entry.item.blockedReason || 'reason not recorded'}`),
+      ...awaitingDecision.map((pilot) => `- **${pilot.id}** pilot closeout awaiting your scale/adjust/stop decision`),
+      ...errors.map((error) => `- state validation: ${error}`),
+      ...Object.values(denials.reduce((byRule, entry) => ({ ...byRule, [entry.ruleId]: { ...entry, count: (byRule[entry.ruleId]?.count || 0) + 1 } }), {}))
+        .map((entry) => `- safety rule **${entry.ruleId}** stopped the agent ${entry.count}\u00d7 (${entry.reason}) — last on \`${entry.tool}\`: \`${entry.subject}\``),
+    ], '- Nothing. No decision required.'),
+    '\n## Moved since last brief\n',
+    list(moved.map((item) => `- **${item.id}** → \`${item.status}\` (${item.statusAt})`), '- No lifecycle changes.'),
+    '\n## Working on next\n',
+    list(ranked.slice(0, limit).map((entry, index) => `${index + 1}. **${entry.item.id}** ${entry.item.title} — ${entry.why} (idle ${entry.idleHours}h)`), '- Board is empty.'),
+    '\n## In flight\n',
+    list(state.workItems.filter((item) => ACTIVE.has(item.status)).map((item) => `- **${item.id}** \`${item.status}\` ${item.repository ? `${item.repository}#${item.issue || '?'}` : ''}${item.pr ? ` PR #${item.pr}` : ''}`), '- Nothing in flight.'),
+    `\n## Steering\n\nEdit \`ops/coding-control/direction.md\` to change priorities. Pinned right now: ${direction.pinned?.length ? direction.pinned.join(', ') : 'none'}.\n`,
+  ].join('\n');
+}
+
 function statePath(cwd) { return path.join(cwd, 'ops', 'coding-control', 'state.json'); }
+function directionPath(cwd) { return path.join(cwd, 'ops', 'coding-control', 'direction.md'); }
+function readDirection(cwd) {
+  return parseDirection(fs.existsSync(directionPath(cwd)) ? fs.readFileSync(directionPath(cwd), 'utf8') : DIRECTION_TEMPLATE);
+}
 function readState(cwd) { return JSON.parse(fs.readFileSync(statePath(cwd), 'utf8')); }
-function writeState(cwd, state) { fs.writeFileSync(statePath(cwd), `${JSON.stringify(state, null, 2)}\n`); }
+
+// Write through a temp file so a cycle killed mid-write cannot leave a
+// truncated state file behind.
+function writeState(cwd, state) {
+  const target = statePath(cwd);
+  const temp = `${target}.${process.pid}.tmp`;
+  fs.writeFileSync(temp, `${JSON.stringify(state, null, 2)}\n`);
+  fs.renameSync(temp, target);
+}
+
+export const LOCK_STALE_MS = 15 * 60 * 1000;
+
+// Single writer. `wx` is an atomic create-or-fail, so two cycles cannot both
+// enter a read-modify-write of the same state file.
+// ponytail: a lock left by a killed process is broken after LOCK_STALE_MS, and
+// two processes breaking the same stale lock race — the loser gets EEXIST and
+// exits. Reach for a real lease only if cycles start running on many hosts.
+// Anything held longer than LOCK_STALE_MS is at risk of being broken under it,
+// so keep slow work inside the section bounded by its own timeouts.
+export async function withLock(cwd, fn) {
+  const lock = path.join(path.dirname(statePath(cwd)), '.lock');
+  let handle;
+  try {
+    handle = fs.openSync(lock, 'wx');
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const held = fs.statSync(lock);
+    if (Date.now() - held.mtimeMs < LOCK_STALE_MS) {
+      throw new Error(`another cycle holds ${lock} (since ${held.mtime.toISOString()}); refusing to write concurrently.`);
+    }
+    fs.rmSync(lock, { force: true });
+    handle = fs.openSync(lock, 'wx');
+  }
+  try {
+    fs.writeSync(handle, `${process.pid}\n`);
+    // Awaited, so an async critical section holds the lock until it finishes
+    // rather than releasing it the moment it returns a promise.
+    return await fn();
+  } finally {
+    fs.closeSync(handle);
+    fs.rmSync(lock, { force: true });
+  }
+}
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [command = 'help'] = process.argv.slice(2);
@@ -195,21 +377,67 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (command === 'init') {
     const target = statePath(cwd);
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (!fs.existsSync(target)) writeState(cwd, emptyState());
-    console.log(target);
+    if (!fs.existsSync(target)) writeState(cwd, { ...emptyState(), repos: [], briefs: [] });
+    if (!fs.existsSync(directionPath(cwd))) fs.writeFileSync(directionPath(cwd), DIRECTION_TEMPLATE);
+    console.log(`${target}\n${directionPath(cwd)}`);
+  } else if (command === 'sync') {
+    const { syncAll } = await import('./github.mjs');
+    const changes = await withLock(cwd, () => {
+      const state = readState(cwd);
+      const observed = syncAll(state);
+      writeState(cwd, state);
+      return observed;
+    });
+    console.log(changes.length ? changes.join('\n') : 'sync: no changes observed');
+  } else if (command === 'smoke') {
+    const { syncAllReleases } = await import('./release.mjs');
+    const changes = await withLock(cwd, async () => {
+      const state = readState(cwd);
+      const observed = await syncAllReleases(state, {});
+      if (observed.length) writeState(cwd, state);
+      return observed;
+    });
+    console.log(changes.length ? changes.join('\n') : 'smoke: nothing awaiting release');
+  } else if (command === 'next') {
+    const state = readState(cwd);
+    const ranked = rank(state, { direction: readDirection(cwd) });
+    console.log(ranked.length
+      ? ranked.map((entry, index) => `${index + 1}. ${entry.item.id} [${entry.item.status}] ${entry.item.title} — ${entry.why}`).join('\n')
+      : 'next: board is empty');
+  } else if (command === 'brief') {
+    const now = new Date().toISOString();
+    const { brief, notify } = await withLock(cwd, () => {
+      const state = readState(cwd);
+      const since = state.briefs?.at(-1)?.at;
+      const rendered = renderBrief(state, { direction: readDirection(cwd), since, now, denials: readDenials(path.dirname(statePath(cwd)), since) });
+      const briefPath = path.join(cwd, 'ops', 'coding-control', 'reports', `brief-${now.replace(/[:.]/g, '-')}.md`);
+      fs.mkdirSync(path.dirname(briefPath), { recursive: true });
+      fs.writeFileSync(briefPath, rendered);
+      (state.briefs ||= []).push({ at: now, path: path.relative(cwd, briefPath) });
+      writeState(cwd, state);
+      return { brief: rendered, notify: state.notify };
+    });
+    // Delivery is a command you configure; the harness does not own a channel.
+    if (notify) {
+      const { execFileSync } = await import('node:child_process');
+      try { execFileSync('sh', ['-c', notify], { input: brief, stdio: ['pipe', 'inherit', 'inherit'] }); }
+      catch (error) { console.error(`brief written but delivery failed: ${error.message}`); process.exitCode = 1; }
+    }
+    console.log(brief);
   } else if (command === 'validate') {
     const errors = validateState(readState(cwd));
     if (errors.length) { console.error(errors.join('\n')); process.exitCode = 1; } else console.log('coding-control validation: passed');
   } else if (command === 'board') {
     console.log(JSON.stringify(readState(cwd).workItems.map(({ id, title, owner, status, statusAt }) => ({ id, title, owner, status, statusAt })), null, 2));
   } else if (command === 'pilot-report') {
-    const pilot = readState(cwd).pilots.find((candidate) => candidate.id === process.argv[3]);
-    if (!pilot) throw new Error(`Unknown pilot: ${process.argv[3] || '(id required)'}`);
-    const state = readState(cwd);
-    const completion = pilotCompletion(state, pilot);
-    if (!completion.ready) {
-      console.log(JSON.stringify({ pilot: pilot.id, ready: false, remaining: completion.incomplete.map((item) => ({ id: item.id, status: item.status })), missing: completion.missing }, null, 2));
-    } else {
+    console.log(await withLock(cwd, () => {
+      const state = readState(cwd);
+      const pilot = state.pilots.find((candidate) => candidate.id === process.argv[3]);
+      if (!pilot) throw new Error(`Unknown pilot: ${process.argv[3] || '(id required)'}`);
+      const completion = pilotCompletion(state, pilot);
+      if (!completion.ready) {
+        return JSON.stringify({ pilot: pilot.id, ready: false, remaining: completion.incomplete.map((item) => ({ id: item.id, status: item.status })), missing: completion.missing }, null, 2);
+      }
       const report = renderPilotReport(state, pilot);
       const reportPath = path.join(cwd, 'ops', 'coding-control', 'reports', `${pilot.id}.md`);
       fs.mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -217,15 +445,26 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       pilot.closeout.reportedAt = new Date().toISOString();
       pilot.closeout.reportPath = path.relative(cwd, reportPath);
       writeState(cwd, state);
-      console.log(reportPath);
-    }
+      return reportPath;
+    }));
   } else if (command === 'record-pilot-decision') {
     const [pilotId, decision, decidedBy] = process.argv.slice(3);
-    const state = readState(cwd);
-    recordPilotDecision(state, pilotId, decision, decidedBy);
-    writeState(cwd, state);
+    await withLock(cwd, () => {
+      const state = readState(cwd);
+      recordPilotDecision(state, pilotId, decision, decidedBy);
+      writeState(cwd, state);
+    });
     console.log(`pilot decision recorded: ${pilotId}=${decision}`);
   } else {
-    console.log('Usage: node ops/coding-control/control-plane.mjs <init|validate|board|pilot-report PILOT_ID|record-pilot-decision PILOT_ID scale|adjust|stop DECIDED_BY>');
+    console.log(['Usage: node src/control-plane.mjs <command>', '',
+      '  init                     create state.json and direction.md',
+      '  sync                     observe configured repos via gh and record evidence',
+      '  smoke                    observe production and record release evidence',
+      '  next                     print the prioritised queue',
+      '  brief                    write and print the standing report for the human',
+      '  validate                 check the state file',
+      '  board                    dump the work item board',
+      '  pilot-report PILOT_ID',
+      '  record-pilot-decision PILOT_ID scale|adjust|stop DECIDED_BY'].join('\n'));
   }
 }

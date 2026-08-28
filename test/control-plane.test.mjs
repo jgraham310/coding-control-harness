@@ -65,3 +65,44 @@ state.pilots[0].metrics.policyViolations = 0;
 state.pilots[0].metrics.missedEvidenceDeadlines = 0;
 assert.deepEqual(validateState(state), []);
 console.log('coding-control tests: passed');
+
+// --- direction, ranking, brief ---
+import { DIRECTION_TEMPLATE, parseDirection, rank, renderBrief, requiredEvidence } from '../src/control-plane.mjs';
+
+assert.deepEqual(requiredEvidence('released'), ['executor_started', 'executor_result', 'verification_passed', 'release_smoke_passed']);
+const skipper = { id: 'CL-SKIP', title: 'Skipper', owner: 'codex', status: 'prepared', evidence: [] };
+addEvidence(skipper, { type: 'release_smoke_passed', source: 'smoke', observedAt: '2026-08-27T00:00:00Z' });
+assert.throws(() => setStatus(skipper, 'released'), /verification_passed/);
+
+const direction = parseDirection(`${DIRECTION_TEMPLATE}`);
+assert.deepEqual(direction.pinned, []);
+const steered = parseDirection('## Pinned\n\n- CL-9 ship this first\n- CL-4\n\n## Not now\n\n- CL-2 wait for design\n');
+assert.deepEqual(steered.pinned, ['CL-9', 'CL-4']);
+assert.deepEqual(steered.notNow, ['CL-2 wait for design']);
+
+const board = emptyState();
+board.workItems.push(
+  { id: 'CL-2', title: 'Deferred', owner: 'a', status: 'prepared', statusAt: '2026-08-27T00:00:00Z', evidence: [] },
+  { id: 'CL-4', title: 'Pinned second', owner: 'a', status: 'prepared', statusAt: '2026-08-27T00:00:00Z', evidence: [] },
+  { id: 'CL-9', title: 'Pinned first', owner: 'a', status: 'prepared', statusAt: '2026-08-27T00:00:00Z', evidence: [] },
+  { id: 'CL-B', title: 'Blocked', owner: 'a', status: 'blocked', statusAt: '2026-08-27T00:00:00Z', blockedReason: 'checks red', evidence: [] },
+);
+const ordered = rank(board, { direction: steered, now: '2026-08-27T01:00:00Z' }).map((entry) => entry.item.id);
+assert.deepEqual(ordered, ['CL-9', 'CL-4', 'CL-B', 'CL-2'], 'pinned beat blocked; deferred sinks below everything');
+assert.deepEqual(rank(board, { now: '2026-08-27T01:00:00Z' }).map((e) => e.item.id)[0], 'CL-B', 'unsteered, blocked work leads');
+
+const brief = renderBrief(board, { direction: steered, since: '2026-08-26T00:00:00Z', now: '2026-08-27T01:00:00Z' });
+assert.match(brief, /## Needs you/);
+assert.match(brief, /CL-B.*checks red/);
+assert.match(brief, /1\. \*\*CL-9\*\*/);
+assert.match(brief, /Pinned right now: CL-9, CL-4/);
+console.log('coding-control cto tests: passed');
+
+// A rail the agent hit is a thing the human needs to see, not a line in a log.
+import { renderBrief as brief2 } from '../src/control-plane.mjs';
+const withDenials = brief2(board, { direction: steered, now: '2026-08-27T01:00:00Z', denials: [
+  { at: '2026-08-27T00:30:00Z', ruleId: 'no-force-push', reason: 'Force pushes require explicit review.', tool: 'Bash', subject: 'git push --force origin main' },
+  { at: '2026-08-27T00:40:00Z', ruleId: 'no-force-push', reason: 'Force pushes require explicit review.', tool: 'Bash', subject: 'git push --force origin main' },
+] });
+assert.match(withDenials, /safety rule \*\*no-force-push\*\* stopped the agent 2×/);
+console.log('coding-control denial-surfacing test: passed');
