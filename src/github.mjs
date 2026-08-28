@@ -23,8 +23,7 @@ const PASSING = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 // and neither is a check that has not finished: a QUEUED or IN_PROGRESS run is
 // pending, never passing. Check runs report status + conclusion; commit status
 // contexts report only state.
-export function checkState(pr) {
-  const checks = pr.statusCheckRollup || [];
+export function rollupState(checks = []) {
   if (!checks.length) return 'none';
   const outcome = (check) => (check.status && check.status !== 'COMPLETED'
     ? 'PENDING'
@@ -33,6 +32,10 @@ export function checkState(pr) {
   if (outcomes.some((result) => FAILING.has(result))) return 'failing';
   if (outcomes.every((result) => PASSING.has(result))) return 'passing';
   return 'pending';
+}
+
+export function checkState(pr) {
+  return rollupState(pr.statusCheckRollup || []);
 }
 
 function record(item, type, source, at, commit) {

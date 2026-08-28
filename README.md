@@ -143,9 +143,8 @@ node src/control-plane.mjs smoke
 ```
 
 The load-bearing question is not "did the smoke checks pass" but **"did they
-pass against code that actually contains this item"**. A green run against a
-deployment that predates the merge proves nothing about the merge. So for each
-verified, merged item the adapter:
+pass against code that actually contains this item, and was that code tested"**.
+So for each verified, merged item the adapter:
 
 1. Reads the live commit from `versionUrl`. If it cannot determine what is
    deployed, it records nothing — it never assumes the newest thing is live.
@@ -153,14 +152,37 @@ verified, merged item the adapter:
    merge commit**. The PR head is not the deployed code — a squash or merge
    commit is — so containment, not equality, is the test. Not contained, or
    diverged, means the item stays `verified` and waits.
-3. Runs the smoke checks once per deployment. All must pass. A failure blocks
+3. Confirms **CI ran green on the merge commit itself**. Verification was
+   recorded against the PR head; a squash produces a different commit, and that
+   commit is what ships. Both check runs and commit statuses are consulted, so
+   external CI counts. No CI of its own means the deployed artifact is
+   unverified and the item waits.
+4. Runs the smoke checks once per deployment. All must pass. A failure blocks
    the item, naming the live commit and the checks that failed.
-4. Records `release_smoke_passed` bound to the item's own head, with the
-   deployed SHA alongside for audit, and moves it to `released`.
+5. Records `release_smoke_passed` bound to the item's own head, with the
+   deployed and merge SHAs alongside for audit, and moves it to `released`.
 
 An empty `checks` list refuses to certify rather than passing vacuously. And
 because the evidence is commit-bound like every other gate, a later push to the
 item retires its release evidence along with its verification.
+
+If your repositories do not run CI on merge commits, set
+`"requireMergeChecks": false`. Step 3 is then skipped and the recorded evidence
+says so in as many words — the claim becomes "smoke passed" rather than "the
+deployed artifact was tested", and the audit trail shows which one you have.
+
+### Trust boundary
+
+`versionUrl` is a network response, so it is treated as hostile input. The
+commit it reports must match `^[0-9a-f]{7,40}$` before it is used, and `gh` is
+invoked with an argument list and no shell, so nothing observed can be
+interpreted as a command or traverse an API path. A malformed or compromised
+endpoint aborts the repo's release pass and certifies nothing.
+
+The two places a shell is used — the `notify` command and a check's `command` —
+run literal strings from your own `state.json`. No observed value is
+interpolated into either. Those files are as trusted as the machine running the
+cycle; treat write access to `state.json` as equivalent to shell access.
 
 ## Safety rails
 
