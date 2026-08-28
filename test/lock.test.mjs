@@ -52,7 +52,7 @@ assert.deepEqual(fs.readdirSync(path.dirname(statePath)).filter((name) => name.e
 // Every command must be able to load its adapter. Awaiting the dispatch at the
 // top level used to deadlock the ones whose adapter imports the control plane
 // back, so `sync` and `smoke` exited 13 without running at all.
-for (const [command, expected] of [['sync', /no changes observed/], ['smoke', /nothing awaiting release/], ['patterns', /nothing recurring/]]) {
+for (const [command, expected] of [['sync', /no changes observed/], ['smoke', /nothing awaiting release/], ['patterns', /nothing recurring/], ['export-memory', /harness-memory-export\/v1/]]) {
   const ran = spawnSync('node', [CLI, command], { cwd, encoding: 'utf8' });
   assert.equal(ran.status, 0, `${command} exited ${ran.status}: ${ran.stderr}`);
   assert.match(ran.stdout, expected);

@@ -621,6 +621,12 @@ async function main() {
       catch (error) { console.error(`brief written but delivery failed: ${error.message}`); process.exitCode = 1; }
     }
     console.log(brief);
+  } else if (command === 'export-memory') {
+    // Read-only: no lock, no write to state, no release side effects.
+    const { buildExport } = await import('./memory-export.mjs');
+    const rendered = `${JSON.stringify(buildExport(readState(cwd)), null, 2)}\n`;
+    const out = process.argv[3];
+    if (out) { fs.writeFileSync(out, rendered); console.log(out); } else process.stdout.write(rendered);
   } else if (command === 'validate') {
     const errors = validateState(readState(cwd));
     if (errors.length) { console.error(errors.join('\n')); process.exitCode = 1; } else console.log('coding-control validation: passed');
@@ -664,6 +670,7 @@ async function main() {
       '  record-revision SKILL PATTERN REV BY [NOTE]  log a skill change answering it',
       '  route ID SKILL BY WHY    record which skill was chosen for a work item, and why',
       '  brief                    write and print the standing report for the human',
+      '  export-memory [FILE]     write the allowlisted memory claims as JSON (stdout by default)',
       '  validate                 check the state file',
       '  board                    dump the work item board',
       '  pilot-report PILOT_ID',

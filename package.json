@@ -4,8 +4,9 @@
   "description": "Evidence-bound control plane and proactive cycle for an autonomous engineering agent.",
   "type": "module",
   "scripts": {
-    "test": "node test/control-plane.test.mjs && node test/github.test.mjs && node test/release.test.mjs && node test/patterns.test.mjs && node test/safety-hook.test.mjs && node test/lock.test.mjs",
+    "test": "node test/control-plane.test.mjs && node test/github.test.mjs && node test/release.test.mjs && node test/patterns.test.mjs && node test/safety-hook.test.mjs && node test/lock.test.mjs && node test/memory-export.test.mjs",
     "cycle": "node src/control-plane.mjs sync && node src/control-plane.mjs smoke && node src/control-plane.mjs validate && node src/control-plane.mjs brief",
+    "export-memory": "node src/control-plane.mjs export-memory",
     "schedule": "sh scripts/schedule.sh"
   },
   "keywords": [
