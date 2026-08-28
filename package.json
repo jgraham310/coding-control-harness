@@ -1,0 +1,11 @@
+{
+  "name": "coding-control-harness",
+  "version": "0.1.0",
+  "description": "Evidence-bound, deterministic control primitives for parallel coding agents.",
+  "type": "module",
+  "scripts": {
+    "test": "node test/control-plane.test.mjs"
+  },
+  "keywords": ["coding-agents", "agent-orchestration", "evidence", "control-plane", "automation"],
+  "license": "MIT"
+}
