@@ -128,7 +128,12 @@ assert.deepEqual(suggestSkills(routed, routed.workItems[1]).map((skill) => skill
 
 // Work in flight with nothing recorded is drift, and the brief says so.
 assert.deepEqual(unroutedItems(routed).map((item) => item.id), ['W-1'], 'prepared work has not been approached yet');
-assert.match(renderBrief(routed, { now: '2026-08-27T01:00:00Z' }), /\*\*W-1\*\* `running`.*no recorded approach/);
+const drifting = renderBrief(routed, { now: '2026-08-27T01:00:00Z' });
+assert.match(drifting, /\*\*W-1\*\* `running`.*no recorded approach/);
+// The warning must track unroutedItems exactly: work nobody has started has no
+// approach to record, and flagging it trains the reader to ignore the warning.
+assert.ok(!/\*\*W-2\*\* `prepared`.*no recorded approach/.test(drifting), 'untouched work is not adrift');
+assert.equal((drifting.match(/no recorded approach/g) || []).length, unroutedItems(routed).length);
 
 recordRoute(routed, 'W-1', { skill: 'security-fix', decidedBy: 'openclaw', why: 'CVE in the auth path' }, '2026-08-27T00:30:00Z');
 assert.deepEqual(unroutedItems(routed), []);

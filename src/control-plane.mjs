@@ -407,6 +407,7 @@ export function renderBrief(state, { direction = { pinned: [] }, since, now = ne
   const moved = state.workItems.filter((item) => since && item.statusAt && item.statusAt > since);
   const errors = validateState(state);
   const awaitingDecision = (state.pilots || []).filter((pilot) => pilot.closeout?.reportedAt && !pilot.closeout?.decision);
+  const adrift = new Set(unroutedItems(state).map((item) => item.id));
   const list = (rows, empty) => (rows.length ? rows.join('\n') : empty);
   return [
     `# CTO brief — ${now}`,
@@ -425,7 +426,10 @@ export function renderBrief(state, { direction = { pinned: [] }, since, now = ne
     list(ranked.slice(0, limit).map((entry, index) => `${index + 1}. **${entry.item.id}** ${entry.item.title} — ${entry.why} (idle ${entry.idleHours}h)`), '- Board is empty.'),
     '\n## In flight\n',
     list(state.workItems.filter((item) => ACTIVE.has(item.status)).map((item) => `- **${item.id}** \`${item.status}\` ${item.repository ? `${item.repository}#${item.issue || '?'}` : ''}${item.pr ? ` PR #${item.pr}` : ''}`
-      + (item.route ? ` — via **${item.route.skill}** (${item.route.decidedBy})` : (state.skills || []).length ? ' — **no recorded approach**' : '')), '- Nothing in flight.'),
+      // Derived from unroutedItems rather than re-tested here, so the warning
+      // and the check cannot drift apart. Work nobody has started yet has no
+      // approach to record.
+      + (item.route ? ` — via **${item.route.skill}** (${item.route.decidedBy})` : adrift.has(item.id) ? ' — **no recorded approach**' : '')), '- Nothing in flight.'),
     `\n## Steering\n\nEdit \`ops/coding-control/direction.md\` to change priorities. Pinned right now: ${direction.pinned?.length ? direction.pinned.join(', ') : 'none'}.\n`,
   ].join('\n');
 }
