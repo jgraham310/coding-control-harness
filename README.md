@@ -261,7 +261,7 @@ evidence does not already carry.
     {
       "id": "800e4535041bebf4f12de6667af7e313",
       "claim": "Work item api#7 in acme/api was released: merge commit aaaa… reached the live deployment bbbb…, and release smoke checks passed against it.",
-      "subject": "release/item/acme/api/api#7",
+      "subject": "delivery/item/acme/api/api#7",
       "validFrom": "2026-08-28",
       "validUntil": null,
       "source": "harness ledger",
@@ -295,13 +295,19 @@ different times; two claims with different subjects never compete.
 
 | Subject | Kind | Supersedes? |
 | --- | --- | --- |
-| `release/item/<owner>/<repo>/<work item id>` | An item reached production | No. Durable — a later release does not make it untrue, and every item keeps its own subject. |
+| `delivery/item/<owner>/<repo>/<work item id>` | An item reached production | No. Durable — a later release does not make it untrue, and every item keeps its own subject. |
 | `release/state/<owner>/<repo>` | What the repository currently has deployed | Yes. One subject per repository; each deployment closes the one before it. |
+
+Item facts are deliberately **not** under `release/`. A consumer that governs
+release state matches the subject by prefix, and these claims never close — so
+under that prefix every item ever shipped would be served as current release
+state, reintroducing through the namespace exactly the staleness the
+repository-scoped state subject exists to prevent.
 
 **Grammar.** Segments are `/`-separated. `<owner>/<repo>` matches
 `[A-Za-z0-9._-]+/[A-Za-z0-9._-]+`. A work item id matches
 `[A-Za-z0-9._#/-]{1,64}` and **routinely contains `#`** — ids are `<repo>#<issue>`
-shaped, so `release/item/acme/api/api#7` is the normal case, not an edge one. It
+shaped, so `delivery/item/acme/api/api#7` is the normal case, not an edge one. It
 is the ledger's own identifier and is exported unescaped; a consumer must treat
 the subject as an opaque string, not as a URI whose fragment begins at `#`.
 
@@ -313,17 +319,24 @@ subject form a non-overlapping timeline:
 | What is live now | `validUntil === null` — exactly one claim per repository |
 | What was live on `D` | `validFrom <= D && (validUntil === null || D < validUntil)` |
 
-Validity is day-granular, per the contract above. Two deployments on one day
-leave the earlier with an empty window, which reads correctly: by the end of
-that day the later one was live. Several items released against a single
-deployment describe one state, not several, so they collapse into one claim
-carrying all of their evidence. A rollback to an earlier commit opens a new
-claim rather than reopening the old one.
+Validity is day-granular, per the contract above, so **a day carries one
+state: the one live at the end of it**. Earlier states that day are not
+emitted — a window that starts and ends on the same date says nothing, and a
+consumer ordering claims by date cannot sequence it, which can leave the day's
+real final state closed by one of its own predecessors and the repository with
+no current deployment at all. Intra-day history stays in the ledger and in the
+item claims; what this timeline can express, it expresses exactly.
+
+Every item that rode the surviving state attests it, so a deployment several
+items were released against is one claim carrying all of their evidence. A
+commit still deployed the next day is one continuing state, not two. A rollback
+to an earlier commit on a later day opens a new claim rather than reopening the
+old one.
 
 | Field | Meaning |
 | --- | --- |
 | `stateDigest` | `sha256` of the key-sorted serialisation of the whole state file. Any change to the source state changes it; key ordering alone does not. |
-| `id` | `sha256(subject, claim, validFrom)`, truncated to 32 hex characters. The same fact keeps the same id across exports; a changed fact gets a new one. |
+| `id` | `sha256(subject, claim, observedAt)`, truncated to 32 hex characters. The same fact keeps the same id across exports; a changed fact gets a new one. The observed instant is hashed rather than its date, so two states beginning on one day cannot collide. |
 | `subject` | The governed key the claim belongs to. See the subject table below for which subjects supersede. |
 | `validFrom` | The date the evidence was observed. `validUntil` is `null` while the claim is still current, and otherwise the date a later claim on the same subject superseded it. |
 | `authority` | `harness` — this system is the authority for the claim, not a relay of somebody else's. |
@@ -362,7 +375,9 @@ The export is a boundary in its own right, not a continuation of the ledger's.
   parts that still look intact would launder the contradiction.
 - **One direction only.** The consumer trusts this output as far as it trusts
   the machine holding `state.json` — which, as above, is as far as it trusts
-  shell access to that machine.
+  shell access to that machine. Nothing flows back: the export reads the ledger
+  and writes JSON, and the consumer's own state is never read, written, or
+  consulted to decide what to emit.
 
 ## Which skill was used
 

@@ -31,9 +31,15 @@ assert.equal(exported.generatedAt, '2026-08-28T12:00:00.000Z');
 assert.deepEqual(Object.keys(exported), ['schema', 'generatedAt', 'source', 'claims']);
 assert.equal(exported.source.system, 'coding-control-harness');
 assert.match(exported.source.stateDigest, /^sha256:[0-9a-f]{64}$/);
-assert.deepEqual(exported.claims.map((entry) => entry.subject), ['release/item/acme/api/api#7', 'release/state/acme/api']);
+assert.deepEqual(exported.claims.map((entry) => entry.subject), ['delivery/item/acme/api/api#7', 'release/state/acme/api']);
+// Item facts stay outside the `release/` prefix a consumer governs release
+// state by. They never close, so under that prefix every item ever shipped
+// would be served as current release state.
+assert.ok(exported.claims.every((entry) => !/^release\//.test(entry.subject) || entry.subject === 'release/state/acme/api'));
+assert.equal(exported.claims.filter((entry) => /^release\//.test(entry.subject) && entry.validUntil === null).length, 1,
+  'exactly one claim under the governed release prefix is open');
 const [claim, deployment] = exported.claims;
-assert.equal(claim.subject, 'release/item/acme/api/api#7');
+assert.equal(claim.subject, 'delivery/item/acme/api/api#7');
 assert.match(deployment.claim, /^acme\/api is deployed at commit bbbb/);
 assert.equal(deployment.validUntil, null, 'the only deployment is the current one');
 assert.deepEqual(deployment.provenance.evidenceIds, [`api#7/release_smoke_passed@${HEAD}`]);
@@ -96,7 +102,7 @@ const forwards = buildExport(shuffled, { now: NOW });
 const backwards = buildExport({ ...shuffled, workItems: [...shuffled.workItems].reverse() }, { now: '2027-01-01T00:00:00Z' });
 assert.equal(canonical(forwards.claims), canonical(backwards.claims), 'claims and ids do not depend on clock or ledger ordering');
 assert.deepEqual(forwards.claims.map((entry) => entry.subject),
-  ['release/item/acme/api/api#7', 'release/item/acme/api/api#9', 'release/state/acme/api']);
+  ['delivery/item/acme/api/api#7', 'delivery/item/acme/api/api#9', 'release/state/acme/api']);
 assert.equal(forwards.claims[0].id, exported.claims[0].id, 'the same fact keeps the same id across exports');
 assert.equal(new Set(forwards.claims.map((entry) => entry.id)).size, 3, 'distinct facts get distinct ids');
 
@@ -157,7 +163,7 @@ assert.deepEqual(states.map((entry) => [entry.validFrom, entry.validUntil]), [['
 // The item facts are durable: a later release supersedes neither of them, and
 // they never share a subject.
 const items = releaseItemClaims(sequential);
-assert.deepEqual(items.map((entry) => entry.subject), ['release/item/acme/api/api#1', 'release/item/acme/api/api#2']);
+assert.deepEqual(items.map((entry) => entry.subject), ['delivery/item/acme/api/api#1', 'delivery/item/acme/api/api#2']);
 assert.deepEqual(items.map((entry) => entry.validUntil), [null, null], 'reaching production does not stop being true');
 
 // Repositories do not supersede one another.
@@ -178,7 +184,44 @@ const rolledBack = board(at('api#1', DAY1, D1, 'd'.repeat(40)), at('api#2', DAY2
 const rollback = deploymentStateClaims(rolledBack);
 assert.deepEqual(rollback.map((entry) => entry.validFrom), ['2026-08-20', '2026-08-24', '2026-08-28']);
 assert.equal(new Set(rollback.map((entry) => entry.id)).size, 3, 'a returning commit is a distinct state with its own id');
+assert.equal(new Set(rollback.map((entry) => entry.claim)).size, 2, 'the returning state repeats its wording but not its identity');
 assert.equal(rollback.filter((entry) => entry.validUntil === null).length, 1);
+
+// Validity is day-granular, so a day carries one state: the one live at the end
+// of it. Emitting the earlier ones would mean windows that start and end on the
+// same date, which a consumer ordering claims by date cannot sequence — the
+// day's real final state can be closed by one of its own predecessors, leaving
+// the repository with no current deployment at all.
+const sameDay = board(
+  at('api#1', '2026-08-20T09:00:00Z', D1, 'd'.repeat(40)),
+  at('api#2', '2026-08-20T11:00:00Z', D2, 'e'.repeat(40)),
+  at('api#3', '2026-08-20T15:00:00Z', D1, 'f'.repeat(40)),
+);
+const endOfDay = deploymentStateClaims(sameDay);
+assert.equal(endOfDay.length, 1, 'a day is one state');
+assert.match(endOfDay[0].claim, new RegExp(`deployed at commit ${D1}`), 'the state live at the end of the day is the one recorded');
+assert.equal(endOfDay[0].validUntil, null);
+assert.deepEqual(endOfDay[0].provenance.evidenceIds, [`api#3/release_smoke_passed@${'f'.repeat(40)}`],
+  'the evidence is the surviving state\'s own, not a different commit\'s');
+assert.equal(new Set(endOfDay.map((entry) => entry.id)).size, endOfDay.length);
+// The intra-day releases are not lost — they remain durable item facts.
+assert.equal(releaseItemClaims(sameDay).length, 3);
+
+// No two claims on a subject may share a validFrom, or a consumer ordering by
+// date has no way to sequence them.
+for (const ledger of [sequential, rolledBack, sameDay, together]) {
+  const seen = new Map();
+  for (const entry of deploymentStateClaims(ledger)) {
+    const key = `${entry.subject}@${entry.validFrom}`;
+    assert.ok(!seen.has(key), `two claims share ${key}`);
+    seen.set(key, entry);
+    assert.ok(entry.validUntil === null || entry.validUntil > entry.validFrom, 'a window that ends must end after it starts');
+  }
+}
+
+// A commit still deployed the next day is not a new state.
+const stillThere = board(at('api#1', DAY1, D1, 'd'.repeat(40)), at('api#2', DAY2, D1, 'e'.repeat(40)));
+assert.equal(deploymentStateClaims(stillThere).length, 1, 'an unchanged deployment is one continuing state');
 
 // Two commits recorded live at the same instant is the ledger contradicting
 // itself. Ordering them would be a guess.
