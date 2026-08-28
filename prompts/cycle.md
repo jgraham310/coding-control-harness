@@ -29,7 +29,11 @@ touch anything, pick one and record it:
 node src/control-plane.mjs route ITEM_ID SKILL_ID your-name "why this one"
 ```
 
-If no catalogued skill fits, say so in the brief rather than routing to the
+The skill id is the canonical name of a skill actually installed for you, not
+a description of your plan. The reason is required and must say something: it
+is what makes a wrong choice reviewable later.
+
+If no installed skill fits, say so in the brief rather than routing to the
 nearest one — a catalog that never gains an entry is a catalog nobody is
 using. Nothing forces you to do this: work advanced with no recorded approach
 appears in the brief as **no recorded approach**, which is the point.

@@ -228,31 +228,46 @@ run literal strings from your own `state.json`. No observed value is
 interpolated into either. Those files are as trusted as the machine running the
 cycle; treat write access to `state.json` as equivalent to shell access.
 
-## Which approach was taken
+## Which skill was used
 
 Work of different kinds wants different handling, and "the agent chose badly"
-is invisible unless the choice is written down. Catalogue the approaches in
-`state.json`:
+is invisible unless the choice is written down. Build the catalog from the
+skills actually installed for the agent, so it carries canonical identifiers
+rather than names someone invented:
+
+```sh
+node src/control-plane.mjs skills ~/.openclaw/agents/cos/agent/codex-home/skills
+```
+
+That reads each `<name>/SKILL.md` manifest and records the skill's `name`,
+description, and — where the manifest declares them — `metadata.source` and
+`metadata.version`, so the record identifies the exact skill and where it came
+from:
 
 ```json
 "skills": [
-  { "id": "security-fix", "match": "security|CVE|vulnerab", "when": "A reported vulnerability. Patch, do not refactor." },
-  { "id": "dependency-bump", "match": "bump|upgrade|dependabot", "when": "A routine version bump." },
-  { "id": "feature", "when": "Anything else. No match pattern, so it always applies." }
+  { "id": "define-goal", "description": "Turn a fuzzy intention into a measurable goal.", "installed": true },
+  { "id": "unlazy", "version": "2.0.0", "source": "https://github.com/Leonxlnx/unlazy",
+    "match": "stall|half done|exhaustive", "installed": true }
 ]
 ```
 
-`match` is a regex tried against the item's title, labels, and repository;
-omit it for a catch-all. `next` lists the applicable skills per item, and the
-agent records which one it chose:
+Add a `match` regex to any entry to have `next` suggest it; entries without one
+always apply. Re-scanning preserves the patterns you wrote, and a catalogued
+skill that is no longer on disk is kept and marked `installed: false`, because
+work already routed to it still names it.
+
+The agent then records which one it used, and why:
 
 ```sh
-node src/control-plane.mjs route api#7 security-fix openclaw "CVE in the auth path"
+node src/control-plane.mjs route api#7 unlazy openclaw "long autonomous run, keeps stalling at 80%"
 ```
 
-A route must name a catalogued skill and a decider. Deleting a skill that work
-was routed to is a validation error, so the catalog cannot quietly drift out
-from under the record.
+A route must name a catalogued skill, a non-blank decider, and a non-blank
+reason — an unexplained choice is not a recorded one, and accepting a blank one
+would silence the warning below by saying nothing. Duplicate or empty skill ids
+and uncompilable `match` patterns are validation errors, so a skill cannot sit
+in the catalog quietly matching nothing.
 
 **This records the choice; it does not force one.** A "consult a skill before
 acting" rule implemented here would be a rule the agent applies to itself,
