@@ -20,7 +20,25 @@ This syncs the configured repos through the read-only GitHub adapter,
 validates the state file, and writes a brief. Read the brief. Read
 `node src/control-plane.mjs next` for the ranked queue.
 
-## 3. Move one thing
+## 3. Choose an approach
+
+`next` lists the skills in the catalog that apply to each item. Before you
+touch anything, pick one and record it:
+
+```sh
+node src/control-plane.mjs route ITEM_ID SKILL_ID your-name "why this one"
+```
+
+The skill id is the canonical name of a skill actually installed for you, not
+a description of your plan. The reason is required and must say something: it
+is what makes a wrong choice reviewable later.
+
+If no installed skill fits, say so in the brief rather than routing to the
+nearest one — a catalog that never gains an entry is a catalog nobody is
+using. Nothing forces you to do this: work advanced with no recorded approach
+appears in the brief as **no recorded approach**, which is the point.
+
+## 4. Move one thing
 
 Take the highest-ranked item you can actually advance and do the smallest
 useful thing that moves it:
@@ -40,7 +58,7 @@ useful thing that moves it:
 Work one item per cycle. Parallel lanes need file reservations
 (`reserveFiles`) so two lanes cannot edit the same paths.
 
-## 4. Report
+## 5. Report
 
 Send the brief to the human on whatever channel you have. Lead with anything
 under **Needs you**; if that section is empty, say the cycle was quiet in one
@@ -50,6 +68,8 @@ the record, your recollection is not.
 ## Rules
 
 - You do not merge your own PRs, and you do not certify your own work.
+- You do not add skills to the catalog. Propose them in the brief; the human
+  decides what belongs there.
 - You do not edit `state.json` by hand to advance an item. Evidence moves it.
 - You do not edit `direction.md`. That file is the human's.
 - Anything destructive, public-facing, or costing money: ask first.

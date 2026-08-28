@@ -21,7 +21,7 @@ export const EVIDENCE_FOR = {
 export function emptyState() {
   return {
     schema: 'coding_control_state/v1',
-    workItems: [], checkpoints: [], fileReservations: [], memory: { proposals: [], reviews: [] }, safetyRules: [], pilots: [],
+    workItems: [], checkpoints: [], fileReservations: [], memory: { proposals: [], reviews: [] }, safetyRules: [], pilots: [], skills: [],
   };
 }
 
@@ -188,6 +188,9 @@ export function validateState(state) {
     if (!LIFECYCLE.includes(item.status)) errors.push(`${item.id}: invalid lifecycle state.`);
     const missing = missingEvidence(item);
     if (missing.length) errors.push(`${item.id}: ${item.status} missing ${missing.join(', ')}.`);
+    if (item.route && !(state.skills || []).some((skill) => skill.id === item.route.skill)) {
+      errors.push(`${item.id}: routed to unknown skill "${item.route.skill}".`);
+    }
     const evidencePrs = evidencePrNumbers(item);
     if (evidencePrs.length > 1) errors.push(`${item.id}: evidence cites multiple PRs (${evidencePrs.join(', ')}); resolve the canonical PR.`);
     if (evidencePrs.length === 1 && item.pr !== evidencePrs[0]) {
@@ -197,6 +200,16 @@ export function validateState(state) {
   for (const reservation of state.fileReservations.filter((entry) => !entry.releasedAt)) {
     const owner = state.workItems.find((item) => item.id === reservation.workItemId);
     if (!owner) errors.push(`Reservation references missing item ${reservation.workItemId}.`);
+  }
+  const skillIds = new Set();
+  for (const skill of state.skills || []) {
+    const id = String(skill.id || '').trim();
+    if (!id) errors.push('Every catalogued skill needs a non-empty id.');
+    else if (skillIds.has(id)) errors.push(`Duplicate skill id "${id}": a route to it would be ambiguous.`);
+    else skillIds.add(id);
+    if (skill.match) {
+      try { new RegExp(skill.match); } catch { errors.push(`Skill ${id || '(unnamed)'}: match is not a valid regular expression, so it can never apply.`); }
+    }
   }
   for (const rule of state.safetyRules) {
     try { if (rule.commandPattern) new RegExp(rule.commandPattern); } catch { errors.push(`Safety rule ${rule.id}: invalid commandPattern.`); }
@@ -255,6 +268,100 @@ export function parseDirection(text = '') {
   };
 }
 
+/**
+ * Which approach applies to a piece of work. The harness cannot make an agent
+ * consult the catalog — a rule an agent calls on itself is not a control — so
+ * it does the part that survives a misbehaving agent instead: it records the
+ * choice and makes its absence visible. Work advanced with no recorded
+ * approach shows up in the brief as exactly that.
+ */
+export function suggestSkills(state, item) {
+  const subject = `${item.title || ''} ${(item.labels || []).join(' ')} ${item.repository || ''}`;
+  return (state.skills || []).filter((skill) => {
+    // An uncompilable pattern means this skill matches nothing, which would be
+    // invisible on its own — `validateState` reports it so it cannot rot
+    // silently while looking like a skill that simply never applies.
+    try { return !skill.match || new RegExp(skill.match, 'i').test(subject); } catch { return false; }
+  });
+}
+
+// Minimal frontmatter read: name, description, and the metadata block skills
+// use for provenance.
+// ponytail: this shape only. If skill manifests grow nested structure worth
+// reading, take a YAML dependency rather than extending this.
+export function readSkillManifest(text = '') {
+  const front = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!front) return null;
+  const fields = {};
+  let section = null;
+  for (const line of front[1].split('\n')) {
+    const top = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
+    const nested = line.match(/^\s+([A-Za-z_][\w-]*):\s*(.*)$/);
+    if (top) { section = top[1]; if (top[2].trim()) fields[top[1]] = top[2].trim(); }
+    else if (nested && section === 'metadata') fields[`metadata.${nested[1]}`] = nested[2].trim();
+  }
+  return fields.name ? {
+    id: fields.name,
+    description: fields.description,
+    source: fields['metadata.source'],
+    version: fields['metadata.version'],
+  } : null;
+}
+
+/**
+ * Read the skills actually installed for an agent, so the catalog carries
+ * canonical identifiers rather than names someone made up. A route can then
+ * name a skill that genuinely exists, with the provenance to prove which one.
+ */
+export function discoverSkills(dir) {
+  if (!fs.existsSync(dir)) throw new Error(`No skills directory at ${dir}`);
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => {
+      const manifest = path.join(dir, entry.name, 'SKILL.md');
+      if (!fs.existsSync(manifest)) return [];
+      const parsed = readSkillManifest(fs.readFileSync(manifest, 'utf8'));
+      return parsed ? [{ ...parsed, path: manifest, installed: true }] : [];
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+// Operator-authored fields (`match`, `when`) survive a re-scan; a catalogued
+// skill that is no longer on disk is kept and marked, because work already
+// routed to it still refers to it.
+export function mergeSkills(state, discovered) {
+  const existing = new Map((state.skills || []).map((skill) => [skill.id, skill]));
+  for (const found of discovered) existing.set(found.id, { ...existing.get(found.id), ...found });
+  const names = new Set(discovered.map((skill) => skill.id));
+  state.skills = [...existing.values()]
+    .map((skill) => (names.has(skill.id) ? skill : { ...skill, installed: false }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return state.skills;
+}
+
+export function recordRoute(state, workItemId, { skill, decidedBy, why }, at = new Date().toISOString()) {
+  const item = state.workItems.find((candidate) => candidate.id === workItemId);
+  if (!item) throw new Error(`Unknown work item: ${workItemId}`);
+  // A blank decider or reason would satisfy the record while explaining
+  // nothing, and would silence the "no recorded approach" warning by doing so.
+  const decider = String(decidedBy || '').trim();
+  const reason = String(why || '').trim();
+  if (!decider) throw new Error('A route requires the decision maker.');
+  if (!reason) throw new Error('A route requires a reason: an unexplained choice is not a recorded one.');
+  if (!(state.skills || []).some((candidate) => candidate.id === skill)) {
+    throw new Error(`Unknown skill: ${skill}. Add it to the catalog before routing work to it.`);
+  }
+  item.route = { skill, decidedBy: decider, why: reason, at };
+  return item.route;
+}
+
+// Only meaningful once a catalog exists; an empty catalog means the feature is
+// unused, not that every item is adrift.
+export function unroutedItems(state) {
+  if (!(state.skills || []).length) return [];
+  return state.workItems.filter((item) => ACTIVE.has(item.status) && item.status !== 'prepared' && !item.route);
+}
+
 const RANK_RULES = [
   { when: (item) => item.status === 'blocked', score: 900, why: 'blocked — needs a decision' },
   { when: (item) => item.status === 'verified', score: 700, why: 'verified — ready to release' },
@@ -280,6 +387,7 @@ export function rank(state, { direction = { pinned: [], notNow: [] }, now = new 
       if (deferred.has(item.id)) score -= 2000;
       return {
         item, score: Math.round(score), idleHours: Math.round(idleHours),
+        skills: suggestSkills(state, item).map((skill) => skill.id),
         why: [pinnedAt >= 0 && 'pinned in direction.md', deferred.has(item.id) && 'deferred by direction.md', rule?.why].filter(Boolean).join('; '),
       };
     })
@@ -299,6 +407,7 @@ export function renderBrief(state, { direction = { pinned: [] }, since, now = ne
   const moved = state.workItems.filter((item) => since && item.statusAt && item.statusAt > since);
   const errors = validateState(state);
   const awaitingDecision = (state.pilots || []).filter((pilot) => pilot.closeout?.reportedAt && !pilot.closeout?.decision);
+  const adrift = new Set(unroutedItems(state).map((item) => item.id));
   const list = (rows, empty) => (rows.length ? rows.join('\n') : empty);
   return [
     `# CTO brief — ${now}`,
@@ -316,7 +425,11 @@ export function renderBrief(state, { direction = { pinned: [] }, since, now = ne
     '\n## Working on next\n',
     list(ranked.slice(0, limit).map((entry, index) => `${index + 1}. **${entry.item.id}** ${entry.item.title} — ${entry.why} (idle ${entry.idleHours}h)`), '- Board is empty.'),
     '\n## In flight\n',
-    list(state.workItems.filter((item) => ACTIVE.has(item.status)).map((item) => `- **${item.id}** \`${item.status}\` ${item.repository ? `${item.repository}#${item.issue || '?'}` : ''}${item.pr ? ` PR #${item.pr}` : ''}`), '- Nothing in flight.'),
+    list(state.workItems.filter((item) => ACTIVE.has(item.status)).map((item) => `- **${item.id}** \`${item.status}\` ${item.repository ? `${item.repository}#${item.issue || '?'}` : ''}${item.pr ? ` PR #${item.pr}` : ''}`
+      // Derived from unroutedItems rather than re-tested here, so the warning
+      // and the check cannot drift apart. Work nobody has started yet has no
+      // approach to record.
+      + (item.route ? ` — via **${item.route.skill}** (${item.route.decidedBy})` : adrift.has(item.id) ? ' — **no recorded approach**' : '')), '- Nothing in flight.'),
     `\n## Steering\n\nEdit \`ops/coding-control/direction.md\` to change priorities. Pinned right now: ${direction.pinned?.length ? direction.pinned.join(', ') : 'none'}.\n`,
   ].join('\n');
 }
@@ -402,8 +515,30 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const state = readState(cwd);
     const ranked = rank(state, { direction: readDirection(cwd) });
     console.log(ranked.length
-      ? ranked.map((entry, index) => `${index + 1}. ${entry.item.id} [${entry.item.status}] ${entry.item.title} — ${entry.why}`).join('\n')
+      ? ranked.map((entry, index) => `${index + 1}. ${entry.item.id} [${entry.item.status}] ${entry.item.title} — ${entry.why}`
+        + (entry.item.route ? ` | routed: ${entry.item.route.skill}` : entry.skills.length ? ` | applicable: ${entry.skills.join(', ')}` : '')).join('\n')
       : 'next: board is empty');
+  } else if (command === 'skills') {
+    const dir = process.argv[3];
+    if (!dir) throw new Error('Usage: skills PATH_TO_INSTALLED_SKILLS');
+    const { discovered, catalog } = await withLock(cwd, () => {
+      const state = readState(cwd);
+      const found = discoverSkills(dir);
+      const merged = mergeSkills(state, found);
+      writeState(cwd, state);
+      return { discovered: found, catalog: merged };
+    });
+    console.log(catalog.map((skill) => `${skill.installed === false ? '-' : '+'} ${skill.id}${skill.version ? `@${skill.version}` : ''}${skill.match ? ` [${skill.match}]` : ''}`).join('\n')
+      || 'no skills found');
+    if (!discovered.length) console.error(`no SKILL.md manifests under ${dir}`);
+  } else if (command === 'route') {
+    const [workItemId, skill, decidedBy, ...why] = process.argv.slice(3);
+    await withLock(cwd, () => {
+      const state = readState(cwd);
+      recordRoute(state, workItemId, { skill, decidedBy, why: why.join(' ') || undefined });
+      writeState(cwd, state);
+    });
+    console.log(`routed ${workItemId} to ${skill}`);
   } else if (command === 'brief') {
     const now = new Date().toISOString();
     const { brief, notify } = await withLock(cwd, () => {
@@ -460,7 +595,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       '  init                     create state.json and direction.md',
       '  sync                     observe configured repos via gh and record evidence',
       '  smoke                    observe production and record release evidence',
-      '  next                     print the prioritised queue',
+      '  next                     print the prioritised queue and applicable skills',
+      '  skills DIR               catalogue the skills installed under DIR',
+      '  route ID SKILL BY WHY    record which skill was chosen for a work item, and why',
       '  brief                    write and print the standing report for the human',
       '  validate                 check the state file',
       '  board                    dump the work item board',

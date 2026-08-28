@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import fsMod from 'node:fs';
+import osMod from 'node:os';
+import pathMod from 'node:path';
 import {
   addCheckpoint, addEvidence, emptyState, evaluateSafetyRules, missingEvidence,
   pilotCompletion, pilotRecommendation, proposeMemory, recallMemory, recordPilotDecision, renderPilotReport, reserveFiles, reviewMemory, setStatus, validateState,
@@ -106,3 +109,108 @@ const withDenials = brief2(board, { direction: steered, now: '2026-08-27T01:00:0
 ] });
 assert.match(withDenials, /safety rule \*\*no-force-push\*\* stopped the agent 2×/);
 console.log('coding-control denial-surfacing test: passed');
+
+// --- which approach was taken, and when nobody recorded one ---
+import { discoverSkills, mergeSkills, readSkillManifest, recordRoute, suggestSkills, unroutedItems } from '../src/control-plane.mjs';
+
+const routed = emptyState();
+routed.skills = [
+  { id: 'security-fix', match: 'security|CVE|vulnerab', when: 'A reported vulnerability.' },
+  { id: 'dependency-bump', match: 'bump|upgrade|dependab', when: 'A routine version bump.' },
+  { id: 'feature', when: 'Anything else. No match pattern, so it always applies.' },
+];
+routed.workItems.push(
+  { id: 'W-1', title: 'Patch CVE-2026-1 in the auth path', owner: 'openclaw', status: 'running', statusAt: '2026-08-27T00:00:00Z', evidence: [{ type: 'executor_started', source: 'PR', observedAt: '2026-08-27T00:00:00Z' }] },
+  { id: 'W-2', title: 'Bump lockfile', owner: 'openclaw', status: 'prepared', statusAt: '2026-08-27T00:00:00Z', labels: ['dependabot'], evidence: [] },
+);
+assert.deepEqual(suggestSkills(routed, routed.workItems[0]).map((skill) => skill.id), ['security-fix', 'feature']);
+assert.deepEqual(suggestSkills(routed, routed.workItems[1]).map((skill) => skill.id), ['dependency-bump', 'feature'], 'labels are matched as well as titles');
+
+// Work in flight with nothing recorded is drift, and the brief says so.
+assert.deepEqual(unroutedItems(routed).map((item) => item.id), ['W-1'], 'prepared work has not been approached yet');
+const drifting = renderBrief(routed, { now: '2026-08-27T01:00:00Z' });
+assert.match(drifting, /\*\*W-1\*\* `running`.*no recorded approach/);
+// The warning must track unroutedItems exactly: work nobody has started has no
+// approach to record, and flagging it trains the reader to ignore the warning.
+assert.ok(!/\*\*W-2\*\* `prepared`.*no recorded approach/.test(drifting), 'untouched work is not adrift');
+assert.equal((drifting.match(/no recorded approach/g) || []).length, unroutedItems(routed).length);
+
+recordRoute(routed, 'W-1', { skill: 'security-fix', decidedBy: 'openclaw', why: 'CVE in the auth path' }, '2026-08-27T00:30:00Z');
+assert.deepEqual(unroutedItems(routed), []);
+assert.match(renderBrief(routed, { now: '2026-08-27T01:00:00Z' }), /via \*\*security-fix\*\* \(openclaw\)/);
+assert.deepEqual(rank(routed, { now: '2026-08-27T01:00:00Z' })[0].skills, ['security-fix', 'feature']);
+
+// A route must name a real skill and a real decider, and drift into an unknown one is caught.
+assert.throws(() => recordRoute(routed, 'W-2', { skill: 'improvise', decidedBy: 'openclaw', why: 'x' }), /Unknown skill: improvise/);
+assert.throws(() => recordRoute(routed, 'W-2', { skill: 'feature', why: 'x' }), /requires the decision maker/);
+assert.throws(() => recordRoute(routed, 'nope', { skill: 'feature', decidedBy: 'x', why: 'y' }), /Unknown work item/);
+assert.deepEqual(validateState(routed), []);
+routed.workItems[0].route.skill = 'deleted-skill';
+assert.match(validateState(routed).join('\n'), /W-1: routed to unknown skill "deleted-skill"/);
+
+// With no catalog the feature is simply unused; it does not nag about every item.
+const noCatalog = emptyState();
+noCatalog.workItems.push({ id: 'X-1', title: 'x', owner: 'a', status: 'running', statusAt: '2026-08-27T00:00:00Z', evidence: [] });
+assert.deepEqual(unroutedItems(noCatalog), []);
+assert.ok(!renderBrief(noCatalog, { now: '2026-08-27T01:00:00Z' }).includes('no recorded approach'));
+console.log('coding-control routing tests: passed');
+
+// A record that explains nothing must not pass for one, since passing would
+// also silence the "no recorded approach" warning.
+assert.throws(() => recordRoute(routed, 'W-2', { skill: 'feature', decidedBy: '   ', why: 'x' }), /requires the decision maker/);
+assert.throws(() => recordRoute(routed, 'W-2', { skill: 'feature', decidedBy: 'openclaw' }), /requires a reason/);
+assert.throws(() => recordRoute(routed, 'W-2', { skill: 'feature', decidedBy: 'openclaw', why: '  ' }), /requires a reason/);
+routed.workItems[0].route.skill = 'security-fix';
+recordRoute(routed, 'W-2', { skill: 'feature', decidedBy: '  openclaw  ', why: '  routine  ' });
+assert.deepEqual(
+  { by: routed.workItems[1].route.decidedBy, why: routed.workItems[1].route.why },
+  { by: 'openclaw', why: 'routine' },
+  'the record is trimmed, not merely non-empty',
+);
+
+// A catalog that cannot do its job says so instead of quietly matching nothing.
+const broken = emptyState();
+broken.skills = [
+  { id: 'good', match: 'a|b' },
+  { id: 'unclosed', match: '([' },
+  { id: 'good' },
+  { id: '   ' },
+];
+const catalogErrors = validateState(broken).join('\n');
+assert.match(catalogErrors, /Skill unclosed: match is not a valid regular expression/);
+assert.match(catalogErrors, /Duplicate skill id "good"/);
+assert.match(catalogErrors, /non-empty id/);
+assert.ok(!suggestSkills(broken, { title: 'a' }).some((skill) => skill.id === 'unclosed'), 'the broken pattern still matches nothing — but is now reported rather than silent');
+
+// --- the catalog is built from skills that actually exist ---
+assert.deepEqual(readSkillManifest('no frontmatter here'), null);
+assert.deepEqual(readSkillManifest('---\nname: demo\ndescription: Does a thing: with a colon\nmetadata:\n  source: https://example.com/demo\n  version: 1.2.3\n---\n# Demo'), {
+  id: 'demo', description: 'Does a thing: with a colon', source: 'https://example.com/demo', version: '1.2.3',
+});
+assert.equal(readSkillManifest('---\ndescription: nameless\n---'), null, 'a manifest without a name is not a skill');
+
+const skillsDir = fsMod.mkdtempSync(pathMod.join(osMod.tmpdir(), 'coding-control-skills-'));
+const makeSkill = (name, body) => {
+  fsMod.mkdirSync(pathMod.join(skillsDir, name), { recursive: true });
+  fsMod.writeFileSync(pathMod.join(skillsDir, name, 'SKILL.md'), body);
+};
+makeSkill('unlazy', '---\nname: unlazy\ndescription: Execution discipline.\nmetadata:\n  source: https://github.com/Leonxlnx/unlazy\n  version: 2.0.0\n---\n');
+makeSkill('define-goal', '---\nname: define-goal\ndescription: Turn a fuzzy intention into a measurable goal.\n---\n');
+fsMod.mkdirSync(pathMod.join(skillsDir, 'not-a-skill'), { recursive: true });
+
+const found = discoverSkills(skillsDir);
+assert.deepEqual(found.map((skill) => skill.id), ['define-goal', 'unlazy'], 'directories without a manifest are not skills');
+assert.equal(found[1].version, '2.0.0');
+assert.equal(found[1].source, 'https://github.com/Leonxlnx/unlazy');
+assert.throws(() => discoverSkills(pathMod.join(skillsDir, 'missing')), /No skills directory at/);
+
+// Re-scanning keeps what the operator wrote and marks what is gone.
+const live = emptyState();
+mergeSkills(live, found);
+live.skills.find((skill) => skill.id === 'unlazy').match = 'stall|half done';
+mergeSkills(live, found.filter((skill) => skill.id === 'unlazy'));
+assert.equal(live.skills.find((skill) => skill.id === 'unlazy').match, 'stall|half done', 'an operator-authored pattern survives a re-scan');
+assert.equal(live.skills.find((skill) => skill.id === 'define-goal').installed, false, 'a skill no longer on disk is kept and marked, since routes still name it');
+assert.deepEqual(validateState(live), []);
+fsMod.rmSync(skillsDir, { recursive: true, force: true });
+console.log('coding-control skill-catalog tests: passed');
