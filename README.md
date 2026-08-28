@@ -77,16 +77,41 @@ npm run cycle        # sync from GitHub, validate, write a brief
 
 ## Making it proactive
 
-The harness has no scheduler; your agent runner is the scheduler. Point it at
-`prompts/cycle.md`, which tells the agent to read your direction file, run a
-cycle, advance exactly one item, and report:
+Install the cycle on a schedule. `prompts/cycle.md` tells the agent to read your
+direction file, run a cycle, advance exactly one item, and report.
 
 ```sh
-0 */2 * * * cd /path/to/repo && claude -p "$(cat prompts/cycle.md)" >> ops/coding-control/cycle.log 2>&1
+npm run schedule install     # every two hours via `claude -p`
+npm run schedule show
+npm run schedule remove
 ```
 
-Delivery of the brief is the agent's job, not the harness's — it sends the
-brief over whatever channel it already has.
+`SCHEDULE` and `AGENT` override the cadence and the runner, and installing twice
+leaves one entry:
+
+```sh
+SCHEDULE="*/30 * * * *" AGENT="codex exec -" npm run schedule install
+```
+
+### Delivering the brief
+
+Set `notify` in `state.json` to any command that reads the brief on stdin:
+
+```json
+"notify": "telegram-send --stdin"
+```
+
+`brief` pipes to it after writing the report. A delivery that fails exits
+non-zero and says so rather than losing the report quietly — the brief is still
+written and printed.
+
+### Concurrency
+
+Every command that writes takes an exclusive lock (`ops/coding-control/.lock`)
+and writes state through a temp file and a rename, so overlapping cycles cannot
+interleave a read-modify-write or leave a truncated state file. A second cycle
+that finds the lock held exits rather than racing. A lock left behind by a
+killed process is broken after fifteen minutes.
 
 ## Safety rails
 
@@ -152,23 +177,44 @@ it maps observations to evidence:
 | --- | --- | --- |
 | PR opened, linked to the issue | `executor_started` | `running` |
 | PR marked ready for review | `executor_result` | `reported_done` |
-| All checks green on the head commit | `verification_passed` | `verified` |
+| All checks green *and finished* on the head commit | `verification_passed` | `verified` |
 | Any check failing | — | `blocked`, with the commit in the reason |
+
+A queued or in-progress check is pending, never passing, so a PR cannot be
+verified while its checks are still running.
 
 `released` is deliberately out of reach: it needs `release_smoke_passed`, which
 no GitHub observation supplies. Write that adapter against your own production
 smoke checks. Each state requires the whole chain beneath it, so nothing skips
 a gate.
 
+**Verification is bound to a commit.** `verification_passed` and
+`release_smoke_passed` record the commit they were observed on. When a PR head
+moves, evidence for the old commit stops satisfying the gate and the item falls
+back to `reported_done` until the new head is verified in its own right. The
+superseded observation stays on the record — it is still something that was
+seen — it just no longer counts. A release adapter therefore cannot inherit a
+green run from code that has since changed.
+
 Models may implement or review bounded tasks. They do not certify their own
 work, and an agent's report of completion is only ever `reported_done`.
 
 ## What this does not do
 
-Tool-level rails are enforced (see **Safety rails**), but the lifecycle ledger
-is not: an agent that declines to call the control plane is unconstrained by
-it. Pair the harness with branch protection and required status checks so the
-ledger and the repository agree on what "verified" means.
+Two limits are worth stating plainly.
+
+**The hook is per-runner, not universal.** `hooks/safety-rules.mjs` speaks the
+Claude Code `PreToolUse` contract. It is unroutable for an agent running under
+that runner, and absent for any other. It reads a tool name and a payload on
+stdin and writes a decision on stdout, so adapting it is small — but until you
+do, a second agent on a different runner is not covered by it.
+
+**The lifecycle ledger is advisory.** An agent that simply declines to call the
+control plane is unconstrained by it. The only enforcement that survives a
+misbehaving agent is enforcement the agent cannot reach: branch protection and
+required status checks on the repositories themselves. Configure those, and the
+ledger and the repository will agree on what "verified" means. Without them,
+this is a very good record of what an honest agent did.
 
 ## Safety note
 

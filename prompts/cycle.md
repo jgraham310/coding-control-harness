@@ -28,7 +28,9 @@ useful thing that moves it:
 - `blocked` — diagnose the failure. Fix it if the fix is small and in scope.
   If it needs a decision, record the question in the brief and move on.
 - `verified` — it is waiting on release. Do not release it yourself unless the
-  human has said you may; surface it instead.
+  human has said you may; surface it instead. If it dropped back to
+  `reported_done`, the PR head moved and the old green run no longer applies;
+  wait for checks on the new commit.
 - `reported_done` — checks are running or missing. Do not mark it verified.
   Only the adapter does that, from checks it observed on a specific commit.
 - `prepared` — open a branch, implement, open a PR that closes the issue.

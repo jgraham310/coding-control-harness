@@ -4,8 +4,9 @@
   "description": "Evidence-bound control plane and proactive cycle for an autonomous engineering agent.",
   "type": "module",
   "scripts": {
-    "test": "node test/control-plane.test.mjs && node test/github.test.mjs && node test/safety-hook.test.mjs",
-    "cycle": "node src/control-plane.mjs sync && node src/control-plane.mjs validate && node src/control-plane.mjs brief"
+    "test": "node test/control-plane.test.mjs && node test/github.test.mjs && node test/safety-hook.test.mjs && node test/lock.test.mjs",
+    "cycle": "node src/control-plane.mjs sync && node src/control-plane.mjs validate && node src/control-plane.mjs brief",
+    "schedule": "sh scripts/schedule.sh"
   },
   "keywords": [
     "coding-agents",

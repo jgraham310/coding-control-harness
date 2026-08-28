@@ -5,7 +5,7 @@
  * certify its own work by asking this module nicely.
  */
 import { execFileSync } from 'node:child_process';
-import { ORDER, addEvidence, evidenceTypes, missingEvidence, setStatus } from './control-plane.mjs';
+import { ORDER, addEvidence, evidenceTypes, missingEvidence, setStatus, staleEvidence } from './control-plane.mjs';
 
 export function gh(args) {
   const out = execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
@@ -16,19 +16,28 @@ export function itemId(repo, issue) {
   return `${repo.split('/').pop()}#${issue}`;
 }
 
-// The rollup is absent on a PR with no configured checks. Absent is not green.
+const FAILING = new Set(['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'STALE']);
+const PASSING = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
+
+// The rollup is absent on a PR with no configured checks. Absent is not green,
+// and neither is a check that has not finished: a QUEUED or IN_PROGRESS run is
+// pending, never passing. Check runs report status + conclusion; commit status
+// contexts report only state.
 export function checkState(pr) {
-  const checks = (pr.statusCheckRollup || []).filter((check) => check.status !== 'QUEUED');
+  const checks = pr.statusCheckRollup || [];
   if (!checks.length) return 'none';
-  const conclusion = (check) => check.conclusion || check.state;
-  if (checks.some((check) => ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED'].includes(conclusion(check)))) return 'failing';
-  if (checks.every((check) => ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(conclusion(check)))) return 'passing';
+  const outcome = (check) => (check.status && check.status !== 'COMPLETED'
+    ? 'PENDING'
+    : check.conclusion || check.state || 'PENDING');
+  const outcomes = checks.map(outcome);
+  if (outcomes.some((result) => FAILING.has(result))) return 'failing';
+  if (outcomes.every((result) => PASSING.has(result))) return 'passing';
   return 'pending';
 }
 
-function record(item, type, source, at) {
+function record(item, type, source, at, commit) {
   if (evidenceTypes(item).has(type)) return false;
-  addEvidence(item, { type, source, observedAt: at });
+  addEvidence(item, { type, source, observedAt: at, ...(commit ? { commit } : {}) });
   return true;
 }
 
@@ -73,11 +82,19 @@ export function syncRepo(state, repo, { now = new Date().toISOString(), fetch = 
         continue;
       }
       item.pr = pr.number;
+      // Evidence about a commit is evidence for that commit only. Recording the
+      // new head before evaluating retires any verification of an older one.
+      const priorHead = item.head;
+      item.head = pr.headRefOid;
+      if (priorHead && priorHead !== item.head && staleEvidence(item).length) {
+        changes.push(`${item.id}: head moved ${priorHead.slice(0, 7)} → ${item.head.slice(0, 7)}; verification of the old commit no longer counts`);
+      }
       const touched = [];
       if (record(item, 'executor_started', `PR #${pr.number} opened ${pr.createdAt}`, pr.createdAt)) touched.push('executor_started');
       if (!pr.isDraft && record(item, 'executor_result', `PR #${pr.number} ready for review`, now)) touched.push('executor_result');
       const checks = checkState(pr);
-      if (checks === 'passing' && !pr.isDraft && record(item, 'verification_passed', `PR #${pr.number} checks green at ${pr.headRefOid}`, now)) touched.push('verification_passed');
+      if (checks === 'passing' && !pr.isDraft
+        && record(item, 'verification_passed', `PR #${pr.number} checks green at ${pr.headRefOid}`, now, pr.headRefOid)) touched.push('verification_passed');
       if (checks === 'failing') {
         item.blockedReason = `PR #${pr.number} has failing checks at ${pr.headRefOid}`;
         if (item.status !== 'blocked') { item.status = 'blocked'; item.statusAt = now; changes.push(`${item.id}: blocked on failing checks`); }

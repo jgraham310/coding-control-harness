@@ -25,8 +25,22 @@ export function emptyState() {
   };
 }
 
+// Evidence about a commit only counts for that commit. Once an item records a
+// head, a verification observed on an earlier commit stops satisfying its gate,
+// so a PR that moves after a green run falls back out of `verified` instead of
+// carrying stale proof forward into a release decision.
+export const COMMIT_BOUND = new Set(['verification_passed', 'release_smoke_passed']);
+
+export function isCurrent(item, entry) {
+  return !item.head || !COMMIT_BOUND.has(entry.type) || entry.commit === item.head;
+}
+
 export function evidenceTypes(item) {
-  return new Set((item.evidence || []).map((entry) => entry.type));
+  return new Set((item.evidence || []).filter((entry) => isCurrent(item, entry)).map((entry) => entry.type));
+}
+
+export function staleEvidence(item) {
+  return (item.evidence || []).filter((entry) => !isCurrent(item, entry));
 }
 
 // A PR mentioned in observed executor evidence is part of the canonical work
@@ -313,7 +327,45 @@ function readDirection(cwd) {
   return parseDirection(fs.existsSync(directionPath(cwd)) ? fs.readFileSync(directionPath(cwd), 'utf8') : DIRECTION_TEMPLATE);
 }
 function readState(cwd) { return JSON.parse(fs.readFileSync(statePath(cwd), 'utf8')); }
-function writeState(cwd, state) { fs.writeFileSync(statePath(cwd), `${JSON.stringify(state, null, 2)}\n`); }
+
+// Write through a temp file so a cycle killed mid-write cannot leave a
+// truncated state file behind.
+function writeState(cwd, state) {
+  const target = statePath(cwd);
+  const temp = `${target}.${process.pid}.tmp`;
+  fs.writeFileSync(temp, `${JSON.stringify(state, null, 2)}\n`);
+  fs.renameSync(temp, target);
+}
+
+export const LOCK_STALE_MS = 15 * 60 * 1000;
+
+// Single writer. `wx` is an atomic create-or-fail, so two cycles cannot both
+// enter a read-modify-write of the same state file.
+// ponytail: a lock left by a killed process is broken after LOCK_STALE_MS, and
+// two processes breaking the same stale lock race — the loser gets EEXIST and
+// exits. Reach for a real lease only if cycles start running on many hosts.
+export function withLock(cwd, fn) {
+  const lock = path.join(path.dirname(statePath(cwd)), '.lock');
+  let handle;
+  try {
+    handle = fs.openSync(lock, 'wx');
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const held = fs.statSync(lock);
+    if (Date.now() - held.mtimeMs < LOCK_STALE_MS) {
+      throw new Error(`another cycle holds ${lock} (since ${held.mtime.toISOString()}); refusing to write concurrently.`);
+    }
+    fs.rmSync(lock, { force: true });
+    handle = fs.openSync(lock, 'wx');
+  }
+  try {
+    fs.writeSync(handle, `${process.pid}\n`);
+    return fn();
+  } finally {
+    fs.closeSync(handle);
+    fs.rmSync(lock, { force: true });
+  }
+}
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [command = 'help'] = process.argv.slice(2);
@@ -325,10 +377,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (!fs.existsSync(directionPath(cwd))) fs.writeFileSync(directionPath(cwd), DIRECTION_TEMPLATE);
     console.log(`${target}\n${directionPath(cwd)}`);
   } else if (command === 'sync') {
-    const state = readState(cwd);
     const { syncAll } = await import('./github.mjs');
-    const changes = syncAll(state);
-    writeState(cwd, state);
+    const changes = withLock(cwd, () => {
+      const state = readState(cwd);
+      const observed = syncAll(state);
+      writeState(cwd, state);
+      return observed;
+    });
     console.log(changes.length ? changes.join('\n') : 'sync: no changes observed');
   } else if (command === 'next') {
     const state = readState(cwd);
@@ -337,15 +392,24 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       ? ranked.map((entry, index) => `${index + 1}. ${entry.item.id} [${entry.item.status}] ${entry.item.title} — ${entry.why}`).join('\n')
       : 'next: board is empty');
   } else if (command === 'brief') {
-    const state = readState(cwd);
     const now = new Date().toISOString();
-    const since = state.briefs?.at(-1)?.at;
-    const brief = renderBrief(state, { direction: readDirection(cwd), since, now, denials: readDenials(path.dirname(statePath(cwd)), since) });
-    const briefPath = path.join(cwd, 'ops', 'coding-control', 'reports', `brief-${now.replace(/[:.]/g, '-')}.md`);
-    fs.mkdirSync(path.dirname(briefPath), { recursive: true });
-    fs.writeFileSync(briefPath, brief);
-    (state.briefs ||= []).push({ at: now, path: path.relative(cwd, briefPath) });
-    writeState(cwd, state);
+    const { brief, notify } = withLock(cwd, () => {
+      const state = readState(cwd);
+      const since = state.briefs?.at(-1)?.at;
+      const rendered = renderBrief(state, { direction: readDirection(cwd), since, now, denials: readDenials(path.dirname(statePath(cwd)), since) });
+      const briefPath = path.join(cwd, 'ops', 'coding-control', 'reports', `brief-${now.replace(/[:.]/g, '-')}.md`);
+      fs.mkdirSync(path.dirname(briefPath), { recursive: true });
+      fs.writeFileSync(briefPath, rendered);
+      (state.briefs ||= []).push({ at: now, path: path.relative(cwd, briefPath) });
+      writeState(cwd, state);
+      return { brief: rendered, notify: state.notify };
+    });
+    // Delivery is a command you configure; the harness does not own a channel.
+    if (notify) {
+      const { execFileSync } = await import('node:child_process');
+      try { execFileSync('sh', ['-c', notify], { input: brief, stdio: ['pipe', 'inherit', 'inherit'] }); }
+      catch (error) { console.error(`brief written but delivery failed: ${error.message}`); process.exitCode = 1; }
+    }
     console.log(brief);
   } else if (command === 'validate') {
     const errors = validateState(readState(cwd));
@@ -353,13 +417,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else if (command === 'board') {
     console.log(JSON.stringify(readState(cwd).workItems.map(({ id, title, owner, status, statusAt }) => ({ id, title, owner, status, statusAt })), null, 2));
   } else if (command === 'pilot-report') {
-    const state = readState(cwd);
-    const pilot = state.pilots.find((candidate) => candidate.id === process.argv[3]);
-    if (!pilot) throw new Error(`Unknown pilot: ${process.argv[3] || '(id required)'}`);
-    const completion = pilotCompletion(state, pilot);
-    if (!completion.ready) {
-      console.log(JSON.stringify({ pilot: pilot.id, ready: false, remaining: completion.incomplete.map((item) => ({ id: item.id, status: item.status })), missing: completion.missing }, null, 2));
-    } else {
+    console.log(withLock(cwd, () => {
+      const state = readState(cwd);
+      const pilot = state.pilots.find((candidate) => candidate.id === process.argv[3]);
+      if (!pilot) throw new Error(`Unknown pilot: ${process.argv[3] || '(id required)'}`);
+      const completion = pilotCompletion(state, pilot);
+      if (!completion.ready) {
+        return JSON.stringify({ pilot: pilot.id, ready: false, remaining: completion.incomplete.map((item) => ({ id: item.id, status: item.status })), missing: completion.missing }, null, 2);
+      }
       const report = renderPilotReport(state, pilot);
       const reportPath = path.join(cwd, 'ops', 'coding-control', 'reports', `${pilot.id}.md`);
       fs.mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -367,13 +432,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       pilot.closeout.reportedAt = new Date().toISOString();
       pilot.closeout.reportPath = path.relative(cwd, reportPath);
       writeState(cwd, state);
-      console.log(reportPath);
-    }
+      return reportPath;
+    }));
   } else if (command === 'record-pilot-decision') {
     const [pilotId, decision, decidedBy] = process.argv.slice(3);
-    const state = readState(cwd);
-    recordPilotDecision(state, pilotId, decision, decidedBy);
-    writeState(cwd, state);
+    withLock(cwd, () => {
+      const state = readState(cwd);
+      recordPilotDecision(state, pilotId, decision, decidedBy);
+      writeState(cwd, state);
+    });
     console.log(`pilot decision recorded: ${pilotId}=${decision}`);
   } else {
     console.log(['Usage: node src/control-plane.mjs <command>', '',

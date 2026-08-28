@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { emptyState, validateState } from '../src/control-plane.mjs';
+import { emptyState, missingEvidence, staleEvidence, validateState } from '../src/control-plane.mjs';
 import { checkState, itemId, syncRepo } from '../src/github.mjs';
 
 const NOW = '2026-08-28T12:00:00Z';
@@ -39,7 +39,8 @@ assert.deepEqual(validateState(state), [], 'canonical PR pointer stays consisten
 // 4. Red checks block, and the adapter never reaches released on its own.
 const red = { ...green, headRefOid: 'def', statusCheckRollup: [{ conclusion: 'FAILURE' }] };
 changes = syncRepo(state, repo, { now: NOW, fetch: stub([], [red]) });
-assert.deepEqual(changes, ['api#7: blocked on failing checks']);
+assert.match(changes.join('\n'), /head moved abc → def/, 'a moved head retires the old verification');
+assert.match(changes.join('\n'), /blocked on failing checks/);
 assert.match(item.blockedReason, /failing checks at def/);
 assert.ok(!state.workItems.some((candidate) => candidate.status === 'released'));
 
@@ -48,4 +49,37 @@ const second = { ...green, number: 44 };
 changes = syncRepo(state, repo, { now: NOW, fetch: stub([], [second]) });
 assert.match(changes.join('\n'), /second PR #44 ignored; canonical stays #31/);
 assert.equal(item.pr, 31);
+
+// 6. Verification is bound to the commit it was observed on.
+const fresh = { ...emptyState(), repos: [repo] };
+syncRepo(fresh, repo, { now: NOW, fetch: stub([{ number: 7, title: 'Rate limit', url: 'u', createdAt: NOW }], []) });
+const tracked = fresh.workItems[0];
+const at = (sha, rollup) => ({ number: 31, isDraft: false, createdAt: NOW, headRefOid: sha, statusCheckRollup: rollup, closingIssuesReferences: [{ number: 7 }] });
+const done = [{ status: 'COMPLETED', conclusion: 'SUCCESS' }];
+
+syncRepo(fresh, repo, { now: NOW, fetch: stub([], [at('abc', done)]) });
+assert.equal(tracked.status, 'verified');
+assert.equal(tracked.head, 'abc');
+
+// The author pushes a new commit; checks restart. The old green run is not proof of the new code.
+changes = syncRepo(fresh, repo, { now: NOW, fetch: stub([], [at('def', [{ status: 'IN_PROGRESS', conclusion: null }])]) });
+assert.equal(tracked.status, 'reported_done', 'verification of abc must not survive a move to def');
+assert.match(changes.join('\n'), /head moved abc → def/);
+assert.equal(staleEvidence(tracked).length, 1, 'the superseded observation is retained, it just stops counting');
+assert.deepEqual(missingEvidence(tracked, 'verified'), ['verification_passed']);
+
+// Re-verifying on the new head restores it, and both observations remain on the record.
+syncRepo(fresh, repo, { now: NOW, fetch: stub([], [at('def', done)]) });
+assert.equal(tracked.status, 'verified');
+assert.equal(tracked.evidence.filter((entry) => entry.type === 'verification_passed').length, 2);
+assert.equal(tracked.evidence.at(-1).commit, 'def');
+
+// 7. An unfinished check is never a passing one.
+assert.equal(checkState({ statusCheckRollup: [...done, { status: 'QUEUED', conclusion: null }] }), 'pending', 'a queued check is pending, not passing');
+assert.equal(checkState({ statusCheckRollup: [...done, { status: 'IN_PROGRESS', conclusion: null }] }), 'pending');
+assert.equal(checkState({ statusCheckRollup: [{ state: 'PENDING' }] }), 'pending', 'commit status contexts report state, not conclusion');
+assert.equal(checkState({ statusCheckRollup: [{ state: 'SUCCESS' }] }), 'passing');
+assert.equal(checkState({ statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'ACTION_REQUIRED' }] }), 'failing');
+syncRepo(fresh, repo, { now: NOW, fetch: stub([], [at('def', [...done, { status: 'QUEUED', conclusion: null }])]) });
+assert.equal(tracked.evidence.filter((entry) => entry.type === 'verification_passed' && entry.commit === 'def').length, 1, 'a queued check adds no new verification');
 console.log('github adapter tests: passed');
