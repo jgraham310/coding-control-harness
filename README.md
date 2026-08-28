@@ -313,15 +313,16 @@ green run from code that has since changed.
 Models may implement or review bounded tasks. They do not certify their own
 work, and an agent's report of completion is only ever `reported_done`.
 
-## What this does not do
+## What this is, and what it is not
 
-Two limits are worth stating plainly.
+This is a supervisory control plane, suitable for running a small number of
+repositories with an agent doing the work and a human reading the briefs. It
+observes work, prioritises it, records commit-bound evidence, refuses claims it
+cannot substantiate, and reports on itself without being asked.
 
-**The hook is per-runner, not universal.** `hooks/safety-rules.mjs` speaks the
-Claude Code `PreToolUse` contract. It is unroutable for an agent running under
-that runner, and absent for any other. It reads a tool name and a payload on
-stdin and writes a decision on stdout, so adapting it is small — but until you
-do, a second agent on a different runner is not covered by it.
+It is not a universal autonomous CTO, and it is not a deployment controller.
+Four controls stay with your environment, and the harness is deliberately built
+to depend on them rather than to simulate them.
 
 **The lifecycle ledger is advisory.** An agent that simply declines to call the
 control plane is unconstrained by it. The only enforcement that survives a
@@ -330,11 +331,38 @@ required status checks on the repositories themselves. Configure those, and the
 ledger and the repository will agree on what "verified" means. Without them,
 this is a very good record of what an honest agent did.
 
-## Safety note
+**The safety hook is per-runner.** `hooks/safety-rules.mjs` speaks the Claude
+Code `PreToolUse` contract. It is unroutable for an agent running under that
+runner, and absent for any other. It reads a tool name and a payload on stdin
+and writes a decision on stdout, so adapting it is small — but until you do, a
+second agent on a different runner is not covered by it.
 
-This repository contains policy primitives, not a universal autonomous merge or
-deployment system. Any adapter that merges or deploys should be narrowly scoped,
-exact-commit bound, fail closed, and separately tested in your environment.
+**Deployment identity is attested, not proven.** The harness can require two
+independent sources to agree on what is live, and it records how many it had.
+It cannot prove the claim: something must be trusted, and no number of sources
+escapes that. A release certified against a single self-reported witness says
+so in its own evidence.
+
+**Promotion authority is not granted here.** Nothing in this repository merges,
+deploys, promotes, or rolls back. Both adapters only observe. If you add one
+that acts, scope it narrowly, bind it to an exact commit, make it fail closed,
+and test it separately in your environment.
+
+## Deciding whether to keep it
+
+Run it over two repositories as a bounded pilot rather than adopting it
+outright. Record the pilot's work items and its measured control failures, and
+close it out:
+
+```sh
+node src/control-plane.mjs pilot-report PILOT_ID
+node src/control-plane.mjs record-pilot-decision PILOT_ID scale|adjust|stop you
+```
+
+The closeout produces a `scale`, `adjust`, or `stop` recommendation from what
+was measured — unverified completion claims, missed evidence deadlines,
+abandoned gates, handoffs that needed recovery, policy violations — rather than
+from how the pilot felt. A decision cannot be recorded before the report exists.
 
 ## License
 
