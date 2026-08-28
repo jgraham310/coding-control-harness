@@ -93,6 +93,61 @@ assert.deepEqual(changes, ['unlazy@2.1.0: held']);
 assert.equal(clean.patterns[0].closedBy, 'unlazy@2.1.0');
 assert.equal(clean.patterns[0].closedAt, T(6 + 200));
 
+// --- held is a standing claim, not a verdict earned once ---
+
+// The gap that let this ship: every earlier test recurred *before* the
+// revision held. A fix that stops working later is the whole point of the loop.
+const late = board();
+const drifter = churn(late, 'api#3', []);
+recordRoute(late, 'api#3', { skill: 'unlazy', decidedBy: 'openclaw', why: 'x' }, T(1));
+for (const at of [T(2), T(3), T(4)]) { setStatus(drifter, 'blocked', at); setStatus(drifter, 'running', at); }
+const p3 = promotePattern(late, 'skill_ineffective:unlazy', { reviewer: 'jason' }, observePatterns(late), T(5));
+recordSkillRevision(late, { skill: 'unlazy', pattern: p3.id, revision: '2.1.0', by: 'jason' }, T(6));
+assert.deepEqual(assessRevisions(late, { observed: observePatterns(late, { from: T(6) }), now: T(206) }), ['unlazy@2.1.0: held']);
+assert.ok(late.patterns[0].closedAt, 'holding closes the pattern it answered');
+
+// Months later, it comes back.
+setStatus(drifter, 'blocked', T(500));
+setStatus(drifter, 'running', T(500));
+changes = assessRevisions(late, { observed: observePatterns(late), now: T(501) });
+assert.match(changes.join('\n'), /unlazy@2\.1\.0: regressed .*after it had held/);
+assert.equal(late.revisions[0].outcome, 'regressed', 'held must be overturnable, as the README promises');
+assert.equal(late.patterns[0].closedAt, undefined, 'a pattern that recurred is not closed');
+assert.deepEqual(loopStatus(late, observePatterns(late)).unanswered.map((pattern) => pattern.id), [p3.id], 'and it is unanswered again');
+
+// Re-assessing a regressed revision is stable rather than flapping.
+assert.deepEqual(assessRevisions(late, { observed: observePatterns(late), now: T(502) }), []);
+
+// One pattern regressing must not disturb another pattern's closure.
+const shared = board();
+const other = churn(shared, 'api#4', []);
+recordRoute(shared, 'api#4', { skill: 'define-goal', decidedBy: 'openclaw', why: 'x' }, T(1));
+for (const at of [T(2), T(3), T(4)]) { setStatus(other, 'blocked', at); setStatus(other, 'running', at); }
+const p4 = promotePattern(shared, 'skill_ineffective:define-goal', { reviewer: 'jason' }, observePatterns(shared), T(5));
+const p5 = promotePattern(shared, 'repeated_block:api#4', { reviewer: 'jason' }, observePatterns(shared), T(5));
+recordSkillRevision(shared, { skill: 'define-goal', pattern: p4.id, revision: '1.1.0', by: 'jason' }, T(6));
+recordSkillRevision(shared, { skill: 'unlazy', pattern: p5.id, revision: '2.1.0', by: 'jason' }, T(6));
+assessRevisions(shared, { observed: observePatterns(shared, { from: T(6) }), now: T(206) });
+assert.deepEqual(shared.patterns.map((pattern) => pattern.closedBy), ['define-goal@1.1.0', 'unlazy@2.1.0']);
+
+// Only api#4's own block recurs, so only the patterns it feeds are overturned.
+setStatus(other, 'blocked', T(500));
+setStatus(other, 'running', T(500));
+assessRevisions(shared, { observed: observePatterns(shared), now: T(501) });
+assert.deepEqual(shared.revisions.map((revision) => revision.outcome), ['regressed', 'regressed'], 'both patterns draw on the same block');
+assert.deepEqual(shared.patterns.map((pattern) => pattern.closedAt), [undefined, undefined]);
+
+// A revision whose pattern never recurs keeps its closure untouched.
+const isolated = board();
+const calm = churn(isolated, 'api#5', [T(2), T(3), T(4)]);
+const p6 = promotePattern(isolated, 'repeated_block:api#5', { reviewer: 'jason' }, observePatterns(isolated), T(5));
+recordSkillRevision(isolated, { skill: 'unlazy', pattern: p6.id, revision: '3.0.0', by: 'jason' }, T(6));
+assessRevisions(isolated, { observed: observePatterns(isolated, { from: T(6) }), now: T(206) });
+churn(isolated, 'api#6', [T(300), T(301), T(302)]);
+assert.deepEqual(assessRevisions(isolated, { observed: observePatterns(isolated), now: T(400) }), [], 'an unrelated pattern does not overturn it');
+assert.equal(isolated.revisions[0].outcome, 'held');
+assert.equal(isolated.patterns[0].closedBy, 'unlazy@3.0.0');
+
 // --- what the loop is waiting on ---
 const status = loopStatus(state, observePatterns(state));
 assert.ok(status.regressed.some((entry) => entry.id === 'unlazy@2.1.0'));

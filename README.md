@@ -323,6 +323,11 @@ days). Any recurrence afterwards marks it `regressed`, however good the change
 looked, and the pattern goes back to unanswered. Nothing is closed by
 declaration.
 
+`held` is a standing claim about the present, not a verdict earned once. Every
+revision is re-assessed on every pass, so a pattern that returns months later
+still overturns a revision that had held — a fix that stopped working is
+exactly what this loop exists to catch.
+
 The brief carries a **Skill loop** section: regressions first, then confirmed
 patterns nothing has answered, then what is recurring and unreviewed.
 

@@ -102,19 +102,30 @@ export function recordSkillRevision(state, { skill, pattern, revision, by, note 
 export function assessRevisions(state, { observed = [], now = new Date().toISOString(), settleHours = SETTLE_HOURS } = {}) {
   const changed = [];
   for (const revision of state.revisions || []) {
-    if (revision.outcome === 'held') continue;
+    // `held` is a standing claim about the present, not a verdict earned once.
+    // Every revision is re-assessed on every pass, so a pattern that comes
+    // back months later still overturns it — a fix that stopped working is
+    // exactly the thing this loop exists to catch.
     const pattern = observed.find((candidate) => candidate.id === revision.pattern);
-    const recurrences = pattern ? [pattern.last].filter((at) => at > revision.at) : [];
+    const recurredAt = pattern && pattern.last > revision.at ? pattern.last : null;
     const settled = (Date.parse(now) - Date.parse(revision.at)) / 3.6e6 >= settleHours;
-    const outcome = recurrences.length ? 'regressed' : settled ? 'held' : 'open';
-    if (outcome !== revision.outcome) {
+    const outcome = recurredAt ? 'regressed' : settled ? 'held' : 'open';
+    const was = revision.outcome;
+    if (outcome !== was) {
       revision.outcome = outcome;
       revision.outcomeAt = now;
-      changed.push(`${revision.id}: ${outcome}${outcome === 'regressed' ? ` (${revision.pattern} recurred at ${recurrences[0]})` : ''}`);
+      changed.push(`${revision.id}: ${outcome}`
+        + (outcome === 'regressed' ? ` (${revision.pattern} recurred at ${recurredAt}${was === 'held' ? ', after it had held' : ''})` : ''));
     }
-    if (outcome === 'held') {
-      const promoted = (state.patterns || []).find((candidate) => candidate.id === revision.pattern && !candidate.closedAt);
-      if (promoted) { promoted.closedAt = now; promoted.closedBy = revision.id; }
+    const promoted = (state.patterns || []).find((candidate) => candidate.id === revision.pattern);
+    if (!promoted) continue;
+    if (outcome === 'held' && !promoted.closedAt) { promoted.closedAt = now; promoted.closedBy = revision.id; }
+    // A pattern that recurred is not closed, whatever was concluded earlier.
+    // Only the revision that closed it may reopen it, so one revision's
+    // regression cannot undo another's.
+    if (outcome === 'regressed' && promoted.closedBy === revision.id) {
+      delete promoted.closedAt;
+      delete promoted.closedBy;
     }
   }
   return changed;
