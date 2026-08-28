@@ -12,7 +12,7 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { addEvidence, evidenceTypes, setStatus } from './control-plane.mjs';
+import { addEvidence, evidenceTypes, recordTransition, setStatus } from './control-plane.mjs';
 import { rollupState } from './github.mjs';
 
 const exec = promisify(execFile);
@@ -265,7 +265,7 @@ export async function syncRelease(state, repo, { now = new Date().toISOString(),
     }
     if (failed.length) {
       item.blockedReason = `smoke checks failed against live ${deployed.slice(0, 7)}: ${failed.map((result) => `${result.name} (${result.detail})`).join('; ')}`;
-      if (item.status !== 'blocked') { item.status = 'blocked'; item.statusAt = now; }
+      if (item.status !== 'blocked') { recordTransition(item, 'blocked', now); item.status = 'blocked'; item.statusAt = now; }
       changes.push(`${item.id}: blocked — ${item.blockedReason}`);
       continue;
     }

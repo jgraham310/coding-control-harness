@@ -73,12 +73,28 @@ export function lastEvidenceAt(item) {
   return (item.evidence || []).map((entry) => entry.observedAt).sort().pop() || item.statusAt;
 }
 
+// Only the latest status is a fact about now; the sequence is the trace. Every
+// transition is appended so recurring behaviour ("this keeps getting blocked")
+// is derivable rather than lost on the next write.
+// ponytail: capped at HISTORY_LIMIT entries, oldest dropped. An item that
+// churns past that has a bigger problem than its truncated history.
+export const HISTORY_LIMIT = 200;
+
 export function setStatus(item, status, at = new Date().toISOString()) {
   if (!LIFECYCLE.includes(status)) throw new Error(`Unknown lifecycle state: ${status}`);
   const missing = missingEvidence(item, status);
   if (missing.length) throw new Error(`${status} requires observed evidence: ${missing.join(', ')}`);
+  recordTransition(item, status, at);
   item.status = status;
   item.statusAt = at;
+  return item;
+}
+
+export function recordTransition(item, status, at) {
+  if (item.status === status) return item;
+  item.history ||= [];
+  item.history.push({ from: item.status, to: status, at });
+  if (item.history.length > HISTORY_LIMIT) item.history.splice(0, item.history.length - HISTORY_LIMIT);
   return item;
 }
 
@@ -402,7 +418,7 @@ export function readDenials(dir, since) {
     .filter((entry) => !since || entry.at > since);
 }
 
-export function renderBrief(state, { direction = { pinned: [] }, since, now = new Date().toISOString(), limit = 5, denials = [] } = {}) {
+export function renderBrief(state, { direction = { pinned: [] }, since, now = new Date().toISOString(), limit = 5, denials = [], loop } = {}) {
   const ranked = rank(state, { direction, now });
   const moved = state.workItems.filter((item) => since && item.statusAt && item.statusAt > since);
   const errors = validateState(state);
@@ -430,6 +446,11 @@ export function renderBrief(state, { direction = { pinned: [] }, since, now = ne
       // and the check cannot drift apart. Work nobody has started yet has no
       // approach to record.
       + (item.route ? ` — via **${item.route.skill}** (${item.route.decidedBy})` : adrift.has(item.id) ? ' — **no recorded approach**' : '')), '- Nothing in flight.'),
+    ...(loop ? ['\n## Skill loop\n', list([
+      ...loop.regressed.map((revision) => `- **${revision.id}** regressed — ${revision.pattern} recurred after the change; the fix did not hold`),
+      ...loop.unanswered.map((pattern) => `- **${pattern.id}** confirmed ${pattern.promotedAt} by ${pattern.reviewer}, still unanswered by any skill revision`),
+      ...loop.unpromoted.map((pattern) => `- ${pattern.detail} — ${pattern.count}× and unreviewed; promote it or say why it is expected`),
+    ], '- Nothing recurring.')] : []),
     `\n## Steering\n\nEdit \`ops/coding-control/direction.md\` to change priorities. Pinned right now: ${direction.pinned?.length ? direction.pinned.join(', ') : 'none'}.\n`,
   ].join('\n');
 }
@@ -531,6 +552,33 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(catalog.map((skill) => `${skill.installed === false ? '-' : '+'} ${skill.id}${skill.version ? `@${skill.version}` : ''}${skill.match ? ` [${skill.match}]` : ''}`).join('\n')
       || 'no skills found');
     if (!discovered.length) console.error(`no SKILL.md manifests under ${dir}`);
+  } else if (command === 'patterns') {
+    const { observePatterns, loopStatus } = await import('./patterns.mjs');
+    const state = readState(cwd);
+    const observed = observePatterns(state, { denials: readDenials(path.dirname(statePath(cwd))) });
+    const status = loopStatus(state, observed);
+    console.log(observed.length
+      ? observed.map((pattern) => `${status.unpromoted.some((entry) => entry.id === pattern.id) ? '?' : '*'} ${pattern.id} (${pattern.count}×) — ${pattern.detail}`).join('\n')
+      : 'patterns: nothing recurring above the threshold');
+  } else if (command === 'promote-pattern') {
+    const { observePatterns, promotePattern } = await import('./patterns.mjs');
+    const [patternId, reviewer, ...note] = process.argv.slice(3);
+    await withLock(cwd, () => {
+      const state = readState(cwd);
+      const observed = observePatterns(state, { denials: readDenials(path.dirname(statePath(cwd))) });
+      promotePattern(state, patternId, { reviewer, note: note.join(' ') }, observed);
+      writeState(cwd, state);
+    });
+    console.log(`promoted ${patternId}`);
+  } else if (command === 'record-revision') {
+    const { recordSkillRevision } = await import('./patterns.mjs');
+    const [skill, pattern, revision, by, ...note] = process.argv.slice(3);
+    await withLock(cwd, () => {
+      const state = readState(cwd);
+      recordSkillRevision(state, { skill, pattern, revision, by, note: note.join(' ') });
+      writeState(cwd, state);
+    });
+    console.log(`recorded ${skill}@${revision} against ${pattern}`);
   } else if (command === 'route') {
     const [workItemId, skill, decidedBy, ...why] = process.argv.slice(3);
     await withLock(cwd, () => {
@@ -541,10 +589,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(`routed ${workItemId} to ${skill}`);
   } else if (command === 'brief') {
     const now = new Date().toISOString();
+    const loopModule = await import('./patterns.mjs');
     const { brief, notify } = await withLock(cwd, () => {
       const state = readState(cwd);
       const since = state.briefs?.at(-1)?.at;
-      const rendered = renderBrief(state, { direction: readDirection(cwd), since, now, denials: readDenials(path.dirname(statePath(cwd)), since) });
+      const { observePatterns, assessRevisions, loopStatus } = loopModule;
+      const observed = observePatterns(state, { denials: readDenials(path.dirname(statePath(cwd))) });
+      assessRevisions(state, { observed, now });
+      const rendered = renderBrief(state, {
+        direction: readDirection(cwd), since, now,
+        denials: readDenials(path.dirname(statePath(cwd)), since),
+        loop: loopStatus(state, observed),
+      });
       const briefPath = path.join(cwd, 'ops', 'coding-control', 'reports', `brief-${now.replace(/[:.]/g, '-')}.md`);
       fs.mkdirSync(path.dirname(briefPath), { recursive: true });
       fs.writeFileSync(briefPath, rendered);
@@ -597,6 +653,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       '  smoke                    observe production and record release evidence',
       '  next                     print the prioritised queue and applicable skills',
       '  skills DIR               catalogue the skills installed under DIR',
+      '  patterns                 show what keeps recurring in the traces',
+      '  promote-pattern ID BY [NOTE]        confirm a pattern is real',
+      '  record-revision SKILL PATTERN REV BY [NOTE]  log a skill change answering it',
       '  route ID SKILL BY WHY    record which skill was chosen for a work item, and why',
       '  brief                    write and print the standing report for the human',
       '  validate                 check the state file',
