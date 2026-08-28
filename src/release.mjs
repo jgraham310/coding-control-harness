@@ -115,11 +115,11 @@ export async function corroborate(repoName, release, deployed, { api = ghApi, ru
   if (!source) return { witnesses: 1, sources: ['the deployment\'s own version endpoint'] };
 
   let reported;
+  let describedAs;
   if (source.deployments) {
-    const route = `repos/${repoName}/deployments?environment=${encodeURIComponent(source.deployments)}&per_page=1`;
-    const result = await api(['api', route, '--jq', '.[0].sha']);
-    if (!result.ok) throw new Error(`cannot read deployments for ${source.deployments}: ${result.output}`);
-    reported = result.output.trim();
+    const active = await activeDeployment(repoName, source.deployments, { api, scan: source.scan });
+    reported = active.sha;
+    describedAs = `the active ${source.deployments} deployment record (#${active.id})`;
   } else if (source.command) {
     const result = await run(source.command, { timeoutMs: release.timeoutMs });
     if (!result.ok) throw new Error(`corroborating command failed: ${result.output}`);
@@ -127,17 +127,45 @@ export async function corroborate(repoName, release, deployed, { api = ghApi, ru
   } else {
     throw new Error('release.corroborate needs either `deployments` or `command`.');
   }
+  describedAs ||= 'a corroborating command';
 
   assertSha(reported, `the commit reported by the corroborating source`);
   // Short and long forms of the same commit agree.
   const [shorter, longer] = [reported, deployed].sort((a, b) => a.length - b.length);
   if (!longer.toLowerCase().startsWith(shorter.toLowerCase())) {
-    throw new Error(`sources disagree about what is live: the version endpoint says ${deployed}, ${source.deployments ? `the ${source.deployments} deployment record` : 'the corroborating command'} says ${reported}`);
+    throw new Error(`sources disagree about what is live: the version endpoint says ${deployed}, ${describedAs} says ${reported}`);
   }
-  return {
-    witnesses: 2,
-    sources: ['the deployment\'s own version endpoint', source.deployments ? `the ${source.deployments} deployment record` : 'a corroborating command'],
-  };
+  return { witnesses: 2, sources: ['the deployment\'s own version endpoint', describedAs] };
+}
+
+/**
+ * The deployment that is actually serving an environment — not merely the most
+ * recently created record. A deployment is only serving if the newest status
+ * on it is `success`: one that failed, is still running, or was superseded and
+ * marked `inactive` is not what production is running, and GitHub keeps all of
+ * them in the same list. So walk back from the newest until one qualifies.
+ *
+ * ponytail: scans the last `scan` records (default 10) and costs one API call
+ * per record inspected, which is one or two in practice. Raise `scan` for an
+ * environment that records many failed deployments in a row.
+ */
+export async function activeDeployment(repoName, environment, { api = ghApi, scan = 10 } = {}) {
+  assertRepo(repoName);
+  const route = `repos/${repoName}/deployments?environment=${encodeURIComponent(environment)}&per_page=${Number(scan) || 10}`;
+  const listed = await api(['api', route, '--jq', '.[] | [.id, .sha] | @tsv']);
+  if (!listed.ok) throw new Error(`cannot read deployments for ${environment}: ${listed.output}`);
+  const records = listed.output.split('\n').filter(Boolean).map((line) => line.split('\t'));
+  if (!records.length) throw new Error(`no deployments recorded for ${environment}`);
+
+  const rejected = [];
+  for (const [id, sha] of records) {
+    const status = await api(['api', `repos/${repoName}/deployments/${encodeURIComponent(id)}/statuses?per_page=1`, '--jq', '.[0].state']);
+    if (!status.ok) throw new Error(`cannot read the status of deployment ${id}: ${status.output}`);
+    const state = status.output.trim() || 'none';
+    if (state === 'success') return { id, sha: assertSha(sha, `the commit on deployment ${id}`), state };
+    rejected.push(`#${id} ${state}`);
+  }
+  throw new Error(`no active deployment for ${environment}: the last ${records.length} record(s) are ${rejected.join(', ')}`);
 }
 
 export async function liveCommit(release, { get = httpGet } = {}) {

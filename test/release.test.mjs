@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { emptyState, evidenceTypes, missingEvidence, validateState } from '../src/control-plane.mjs';
-import { assertSha, containsCommit, corroborate, liveCommit, mergeCheckState, pluck, releaseCandidates, runCheck, syncRelease } from '../src/release.mjs';
+import { activeDeployment, assertSha, containsCommit, corroborate, liveCommit, mergeCheckState, pluck, releaseCandidates, runCheck, syncRelease } from '../src/release.mjs';
 
 const NOW = '2026-08-28T12:00:00Z';
 const MERGE = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -42,7 +42,8 @@ const stub = ({ version = { build: { commit: LIVE } }, status = 200, checks = {}
     const route = args[1];
     if (route.includes('/compare/')) return { ok: true, output: compare };
     if (route.endsWith('/check-runs')) return { ok: true, output: mergeCi ? JSON.stringify({ status: 'COMPLETED', conclusion: mergeCi }) : '' };
-    if (route.includes('/deployments')) return { ok: true, output: deployRecord };
+    if (route.includes('/deployments?')) return { ok: true, output: `1\t${deployRecord}` };
+    if (route.includes('/deployments/')) return { ok: true, output: 'success' };
     return { ok: true, output: '' };
   },
   run: async () => ({ ok: true, output: '' }),
@@ -197,7 +198,7 @@ state2 = attested();
 await syncRelease(state2, state2.repos[0], { now: NOW, ...stub() });
 assert.equal(state2.workItems[0].status, 'released');
 assert.equal(state2.workItems[0].evidence.at(-1).witnesses, 2);
-assert.match(state2.workItems[0].evidence.at(-1).source, /attested by the deployment's own version endpoint and the production deployment record/);
+assert.match(state2.workItems[0].evidence.at(-1).source, /attested by the deployment's own version endpoint and the active production deployment record \(#1\)/);
 assert.ok(!state2.workItems[0].evidence.at(-1).source.includes('unconfirmed'));
 
 // A lying endpoint that reports a well-formed but wrong SHA is caught.
@@ -207,7 +208,8 @@ assert.match(out.join('\n'), /sources disagree about what is live/);
 assert.equal(state2.workItems[0].status, 'verified', 'disagreement certifies nothing');
 
 // Short and long forms of the same commit are the same commit.
-assert.equal((await corroborate('a/b', { corroborate: { deployments: 'prod' } }, LIVE, { api: async () => ({ ok: true, output: LIVE.slice(0, 7) }) })).witnesses, 2);
+const oneActive = (sha) => async (args) => ({ ok: true, output: args[1].includes('/deployments?') ? `1\t${sha}` : 'success' });
+assert.equal((await corroborate('a/b', { corroborate: { deployments: 'prod' } }, LIVE, { api: oneActive(LIVE.slice(0, 7)) })).witnesses, 2);
 
 // A corroborating source that cannot be read is a refusal, not a fallback to the single witness.
 state2 = attested();
@@ -216,9 +218,75 @@ assert.match(out.join('\n'), /cannot read deployments for production/);
 assert.equal(state2.workItems[0].status, 'verified');
 
 // The corroborating source is untrusted input too.
-await assert.rejects(() => corroborate('a/b', { corroborate: { deployments: 'p' } }, LIVE, { api: async () => ({ ok: true, output: '$(id)' }) }), /is not a commit SHA/);
+await assert.rejects(() => corroborate('a/b', { corroborate: { deployments: 'p' } }, LIVE, { api: oneActive('$(id)') }), /is not a commit SHA/);
 await assert.rejects(() => corroborate('a/b', { corroborate: {} }, LIVE, {}), /needs either `deployments` or `command`/);
 assert.equal((await corroborate('a/b', { corroborate: { command: 'kubectl get ...' } }, LIVE, { run: async () => ({ ok: true, output: `${LIVE}\n` }) })).witnesses, 2);
 await assert.rejects(() => corroborate('a/b', { corroborate: { command: 'x' } }, LIVE, { run: async () => ({ ok: false, output: 'boom' }) }), /corroborating command failed/);
+
+// --- a deployment record is only a witness if it is the one serving ---
+
+// GitHub lists deployments newest-first regardless of outcome, so the newest
+// record is routinely not what is running.
+const deployments = (records, statuses) => async (args) => {
+  const route = args[1];
+  if (route.includes('/deployments?')) return { ok: true, output: records.map((r) => r.join('\t')).join('\n') };
+  const id = route.match(/deployments\/(\d+)\//)[1];
+  return { ok: true, output: statuses[id] ?? '' };
+};
+const A = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1';
+const B = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2';
+
+// A created-but-failed deployment must not corroborate its SHA.
+let active = await activeDeployment('a/b', 'production', { api: deployments([['3', A], ['2', B]], { 3: 'failure', 2: 'success' }) });
+assert.equal(active.sha, B, 'a failed deployment is not what is serving');
+assert.equal(active.id, '2');
+
+// Still in flight is not serving either.
+active = await activeDeployment('a/b', 'production', { api: deployments([['3', A], ['2', B]], { 3: 'in_progress', 2: 'success' }) });
+assert.equal(active.sha, B);
+active = await activeDeployment('a/b', 'production', { api: deployments([['3', A], ['2', B]], { 3: 'queued', 2: 'success' }) });
+assert.equal(active.sha, B);
+
+// Superseded and marked inactive is not serving, even though it once succeeded.
+active = await activeDeployment('a/b', 'production', { api: deployments([['3', A], ['2', B]], { 3: 'inactive', 2: 'success' }) });
+assert.equal(active.sha, B, 'the newest status wins; an inactive deployment is no longer live');
+
+// The healthy case still resolves to the newest successful record.
+active = await activeDeployment('a/b', 'production', { api: deployments([['3', A], ['2', B]], { 3: 'success', 2: 'success' }) });
+assert.equal(active.sha, A);
+
+// Nothing serving is an error naming what was rejected, never a guess.
+await assert.rejects(
+  () => activeDeployment('a/b', 'production', { api: deployments([['3', A], ['2', B]], { 3: 'error', 2: 'inactive' }) }),
+  /no active deployment for production: the last 2 record\(s\) are #3 error, #2 inactive/,
+);
+await assert.rejects(() => activeDeployment('a/b', 'production', { api: deployments([], {}) }), /no deployments recorded/);
+await assert.rejects(
+  () => activeDeployment('a/b', 'production', { api: async (args) => (args[1].includes('/deployments/') ? { ok: false, output: '403' } : { ok: true, output: `9\t${A}` }) }),
+  /cannot read the status of deployment 9/,
+);
+// A record carrying something that is not a SHA is rejected like any other input.
+await assert.rejects(() => activeDeployment('a/b', 'production', { api: deployments([['3', 'HEAD']], { 3: 'success' }) }), /is not a commit SHA/);
+
+// End to end: the newest deployment failed, so the endpoint's claim is uncorroborated.
+state2 = attested();
+out = await syncRelease(state2, state2.repos[0], {
+  now: NOW, get: stub().get, run: stub().run,
+  api: async (args) => (args[1].includes('/deployment')
+    ? deployments([['3', A], ['2', LIVE]], { 3: 'failure', 2: 'success' })(args)
+    : stub().api(args)),
+});
+assert.equal(state2.workItems[0].status, 'released', 'the serving deployment agrees with the endpoint');
+assert.match(state2.workItems[0].evidence.at(-1).source, /the active production deployment record \(#2\)/);
+
+state2 = attested();
+out = await syncRelease(state2, state2.repos[0], {
+  now: NOW, get: stub().get, run: stub().run,
+  api: async (args) => (args[1].includes('/deployment')
+    ? deployments([['3', LIVE], ['2', A]], { 3: 'failure', 2: 'success' })(args)
+    : stub().api(args)),
+});
+assert.match(out.join('\n'), /sources disagree about what is live/, 'a failed deployment must not corroborate its own SHA');
+assert.equal(state2.workItems[0].status, 'verified');
 
 console.log('release adapter tests: passed');

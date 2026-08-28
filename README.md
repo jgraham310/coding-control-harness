@@ -183,8 +183,20 @@ second, independent source and the two must agree:
 "corroborate": { "deployments": "production" }
 ```
 
-That reads GitHub's own deployment record for the environment. For a target
-GitHub does not know about, use a command that prints the live SHA:
+That reads GitHub's own record of what is deployed. GitHub lists deployments
+newest-first regardless of outcome, so the newest record is routinely *not*
+what is running — the adapter therefore resolves the deployment that is
+actually serving: it walks back from the newest until it finds one whose
+**latest status is `success`**. A deployment that failed, is still queued or in
+progress, or succeeded and was later superseded and marked `inactive` is not
+serving and cannot corroborate its SHA. If nothing in the scanned window is
+active, that is an error naming what was rejected, never a guess. Set `scan`
+(default 10) for an environment that records long runs of failed deployments.
+
+This costs one API call per record inspected, which is one or two in practice.
+
+For a target GitHub does not know about, use a command that prints the live SHA
+by querying the platform directly:
 
 ```json
 "corroborate": { "command": "kubectl get deploy/api -o jsonpath='{...}'" }
