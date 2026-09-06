@@ -64,6 +64,76 @@ List the repositories to supervise in `state.json`:
 Every open issue carrying that label becomes tracked work. Omit `label` to
 track every open issue.
 
+## Authoritative coding kernel interface
+
+The repository now includes a boundary-aware kernel for coding execution operations:
+lease acquire/release/reconcile/heartbeat, worktree create/remove/reconcile,
+run claim/heartbeat/complete/recover, PR lifecycle observation/advance,
+and bounded retry/repair. It is the authoritative execution surface for
+state mutation and immutable evidence.
+
+The kernel is **process/JSON boundary controlled** via `src/coding-kernel.mjs` and
+runtime-side JSON schemas:
+
+- `schemas/coding-kernel-request.schema.json`
+- `schemas/coding-kernel-manifest.schema.json`
+
+Every request is executed by operation name with strict idempotency and
+repository-boundary authorization.
+
+```sh
+node src/coding-kernel.mjs --runtime-root /tmp/coding-control-kernel-runtime --request '{ "operation": "lease-acquire", "actor": "agent-a", "repository": "acme/api", "payload": { "resource": "release-worktree", "repository": "acme/api" } }'
+```
+
+All successful and failed operations return machine-readable JSON including:
+`interface` (`1.0.0`), `operation`, `operationId`, `ok`, and repair metadata on
+failure. Idempotency keys replay the same operation result without re-running
+unless the request fingerprint changes.
+
+Boundary manifest (`manifest.json`) is authoritative for:
+
+- authorized actors
+- mutation surfaces
+- repository scope
+- governance-only operations
+
+Unknown operation or unauthorized access returns a bounded repair event and no
+silent mutation.
+
+Stable operations exposed through the CLI:
+
+- `lease-acquire`, `lease-release`, `lease-reconcile`, `lease-heartbeat`
+- `worktree-create`, `worktree-remove`, `worktree-reconcile`
+- `run-claim`, `run-heartbeat`, `run-complete`, `run-recover`
+- `pr-observe`, `pr-advance`
+- `retry-start`, `retry-attempt`, `retry-reconcile`
+- `kernel-recover`, `kernel-policy-update`
+
+Runtime evidence is persisted as:
+
+- durable state: `<runtimeRoot>/state.json`
+- append-only ledger: `<runtimeRoot>/evidence.jsonl`
+
+Default runtime root is `${os.tmpdir()}/coding-control-kernel-runtime`.
+
+`state` and `evidence` live at `runtimeRoot/state.json` and
+`runtimeRoot/evidence.jsonl`, defaulting to `${os.tmpdir()}/coding-control-kernel-runtime`
+rather than repository files. Boundary manifests in `runtimeRoot/manifest.json`
+declare allowed executors, repositories, and mutation surfaces.
+
+Rules:
+
+- unknown executor or mutation surface: fail closed with a repair record
+- policy operations require `governance: true` in the manifest
+- stale actors, duplicate locks, stale outcomes, and stale/reappearing evidence create bounded repair records
+- every state write is via temp-file rename to survive interruption
+
+Run tests for the kernel through the project script:
+
+```sh
+npm test
+```
+
 ## Running it
 
 ```sh

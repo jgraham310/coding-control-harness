@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coding-kernel-request",
+  "title": "Coding Kernel Request",
+  "type": "object",
+  "required": ["operation", "actor", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "operation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repository": {
+      "type": "string"
+    },
+    "expected": {
+      "type": "string"
+    },
+    "idempotencyKey": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "runtimeRoot": {
+      "type": "string"
+    },
+    "now": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
