@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { IMPACT_SCHEMA, LEDGER_SCHEMA, buildImpactManifest, buildShadowReport, ingestLedgerEvent } from '../src/ci-shadow.mjs';
 const map = { schema: IMPACT_SCHEMA, version: '1', fullSuite: ['pytest'], rules: [{ path: 'packages/widget/**', targets: ['tests/widget.py'] }] };
 const low = buildImpactManifest({ repository: 'x/y', headSha: 'a', changedFiles: ['packages/widget/a.py'], impactMap: map });
@@ -13,4 +14,6 @@ assert.equal(buildShadowReport({ events, manifests: [low], now: '2026-01-01T02:0
 events = ingestLedgerEvent(events, { ...event, status: 'completed', conclusion: 'success' });
 assert.equal(buildShadowReport({ events, manifests: Array.from({ length: 50 }, () => low) }).decision, 'eligible_for_review');
 assert.equal(buildShadowReport({ events: [...events, { ...event, jobId: 3, status: 'completed', kind: 'comparison', selectedConclusion: 'success', fullConclusion: 'failure' }], manifests: [low] }).decision, 'hold');
+const cli = JSON.parse(execFileSync('node', ['src/ci-shadow.mjs', 'manifest', '-'], { input: JSON.stringify({ repository: 'x/y', headSha: 'a', changedFiles: ['packages/widget/a.py'], impactMap: map }), encoding: 'utf8' }));
+assert.equal(cli.decision, 'advisory_selection'); assert.match(cli.fingerprint, /^[a-f0-9]{16}$/);
 console.log('ci shadow tests passed');

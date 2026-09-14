@@ -2,6 +2,7 @@
 /** Deterministic, advisory CI impact analysis. Full CI is never selected away. */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 export const IMPACT_SCHEMA = 'ci_impact_map/v1';
 export const LEDGER_SCHEMA = 'ci_shadow_ledger_event/v1';
@@ -76,4 +77,4 @@ function cli() {
   else throw new Error('usage: ci-shadow.mjs manifest|ingest|report <json-file|->');
   process.stdout.write(`${JSON.stringify({ ...out, fingerprint: hash(JSON.stringify(out)) })}\n`);
 }
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1])) cli();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) cli();
