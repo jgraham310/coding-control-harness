@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { IMPACT_SCHEMA, LEDGER_SCHEMA, buildImpactManifest, buildShadowReport, ingestLedgerEvent } from '../src/ci-shadow.mjs';
+const map = { schema: IMPACT_SCHEMA, version: '1', fullSuite: ['pytest'], rules: [{ path: 'packages/widget/**', targets: ['tests/widget.py'] }] };
+const low = buildImpactManifest({ repository: 'x/y', headSha: 'a', changedFiles: ['packages/widget/a.py'], impactMap: map });
+assert.deepEqual(low.selectedTargets, ['tests/widget.py']); assert.equal(low.fullCiRequired, true);
+const unknown = buildImpactManifest({ repository: 'x/y', headSha: 'a', changedFiles: ['docs/a.md'], impactMap: map });
+assert.equal(unknown.decision, 'full_suite_fallback'); assert.deepEqual(unknown.selectedTargets, ['pytest']);
+const high = buildImpactManifest({ repository: 'x/y', headSha: 'a', changedFiles: ['packages/core/auth.py'], impactMap: map });
+assert.equal(high.decision, 'full_suite_fallback');
+const event = { schema: LEDGER_SCHEMA, repository: 'x/y', headSha: 'a', workflowRunId: 1, jobId: 2, status: 'in_progress', observedAt: '2026-01-01T00:00:00Z' };
+let events = ingestLedgerEvent([], event); events = ingestLedgerEvent(events, event); assert.equal(events.length, 1);
+assert.equal(buildShadowReport({ events, manifests: [low], now: '2026-01-01T02:00:00Z' }).decision, 'hold');
+events = ingestLedgerEvent(events, { ...event, status: 'completed', conclusion: 'success' });
+assert.equal(buildShadowReport({ events, manifests: Array.from({ length: 50 }, () => low) }).decision, 'eligible_for_review');
+assert.equal(buildShadowReport({ events: [...events, { ...event, jobId: 3, status: 'completed', kind: 'comparison', selectedConclusion: 'success', fullConclusion: 'failure' }], manifests: [low] }).decision, 'hold');
+console.log('ci shadow tests passed');
