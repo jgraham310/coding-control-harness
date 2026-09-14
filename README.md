@@ -100,6 +100,12 @@ Boundary manifest (`manifest.json`) is authoritative for:
 Unknown operation or unauthorized access returns a bounded repair event and no
 silent mutation.
 
+When governance sets the `acceptanceContractRequired` policy for a repository,
+`run-claim` fails closed unless its payload carries the issue number and the
+complete Engineering Acceptance Contract (including its named
+`issue-<number>-acceptance` deterministic target). The accepted issue number is
+recorded in the run-claim evidence without duplicating the issue body.
+
 Stable operations exposed through the CLI:
 
 - `lease-acquire`, `lease-release`, `lease-reconcile`, `lease-heartbeat`

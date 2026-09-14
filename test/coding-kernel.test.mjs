@@ -13,6 +13,7 @@ import {
   executeKernelOperation,
   initializeKernelRuntime,
   readKernelState,
+  validateAcceptanceContract,
   writeKernelState,
 } from '../src/coding-kernel.mjs';
 
@@ -65,6 +66,35 @@ function readEvidenceLines(runtimeRoot) {
     .split('\n')
     .filter(Boolean)
     .map((entry) => JSON.parse(entry));
+}
+
+const ACCEPTANCE_BODY = `## Engineering Acceptance Contract
+## Machine-Executable UAT
+### Issue-derived user role
+### Synthetic test data and starting state
+### Steps
+### Expected outcomes
+### Forbidden outcomes
+### Correctness and compliance checks
+### Evidence to capture
+\`issue-625-acceptance\``;
+
+// 0) acceptance contracts are parseable and an enabled policy blocks incomplete work.
+{
+  assert.equal(validateAcceptanceContract({ issueNumber: 625, body: ACCEPTANCE_BODY }).valid, true);
+  assert.equal(validateAcceptanceContract({ issueNumber: 625, body: '## Engineering Acceptance Contract' }).valid, false);
+  const { runtimeRoot, request } = makeKernel([
+    { id: 'governance', surfaces: ['policy'], repositories: ['repo-a'], governance: true },
+    { id: 'runner', surfaces: [SURFACE_RUNS], repositories: ['repo-a'] },
+  ]);
+  const enabled = request({ operation: 'kernel-policy-update', actor: 'governance', repository: 'repo-a', payload: { key: 'acceptanceContractRequired', value: { 'repo-a': true } } });
+  assert.equal(enabled.ok, true);
+  const blocked = request({ operation: 'run-claim', actor: 'runner', repository: 'repo-a', payload: { workItemId: 'WI-625' } });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.repair.kind, 'missing-acceptance-contract');
+  const admitted = request({ operation: 'run-claim', actor: 'runner', repository: 'repo-a', payload: { workItemId: 'WI-625', acceptanceContract: { issueNumber: 625, body: ACCEPTANCE_BODY } } });
+  assert.equal(admitted.ok, true);
+  fs.rmSync(runtimeRoot, { recursive: true, force: true });
 }
 
 // 1) duplicate/overlapping lease claims fail closed and create repair records.

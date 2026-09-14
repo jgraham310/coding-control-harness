@@ -70,6 +70,17 @@ const DEFAULT_RETRY_DEADLINE_MS = 2 * 60 * 60 * 1000;
 const MAX_RETRY_ATTEMPTS_DEFAULT = 3;
 const KERNEL_LOCK_STALE_MS = 15 * 60 * 1000;
 const EVIDENCE_PREFIX = /^[0-9a-f]{7,40}$/i;
+const ACCEPTANCE_HEADINGS = Object.freeze([
+  '## Engineering Acceptance Contract',
+  '## Machine-Executable UAT',
+  '### Issue-derived user role',
+  '### Synthetic test data and starting state',
+  '### Steps',
+  '### Expected outcomes',
+  '### Forbidden outcomes',
+  '### Correctness and compliance checks',
+  '### Evidence to capture',
+]);
 const BOUNDARY_SURFACES = new Set([
   '*',
   SURFACE_LEASES,
@@ -89,6 +100,25 @@ function isObject(value) {
 
 function normalize(value) {
   return String(value || '').trim();
+}
+
+/**
+ * Validate an issue-derived acceptance contract before a coding run begins.
+ * This intentionally accepts the issue body as data rather than fetching it:
+ * the caller records exactly the contract it asked the executor to satisfy.
+ */
+export function validateAcceptanceContract({ issueNumber, body } = {}) {
+  const number = Number(issueNumber);
+  const text = typeof body === 'string' ? body : '';
+  const missing = ACCEPTANCE_HEADINGS.filter((heading) => !text.includes(heading));
+  if (!Number.isInteger(number) || number <= 0) missing.unshift('a positive issue number');
+  if (!new RegExp(`\\bissue-${number}-acceptance\\b`, 'i').test(text)) missing.push(`named deterministic target issue-${number}-acceptance`);
+  return { valid: missing.length === 0, missing };
+}
+
+function acceptanceContractRequired(state, repository) {
+  const policy = state.policy?.acceptanceContractRequired;
+  return policy === true || (isObject(policy) && policy[repository] === true);
 }
 
 function assert(condition, message) {
@@ -733,6 +763,17 @@ function handleRunClaim(state, manifest, request) {
     cap: 1,
   });
 
+  if (acceptanceContractRequired(state, repository)) {
+    const acceptance = validateAcceptanceContract(payload.acceptanceContract);
+    if (!acceptance.valid) return operationFailure(
+      state,
+      request,
+      `run claim is blocked: acceptance contract is incomplete (${acceptance.missing.join('; ')})`,
+      'missing-acceptance-contract',
+      { surface: SURFACE_RUNS, repository, targetId: workItemId, cap: 1, deadline: request.now },
+    );
+  }
+
   const leaseIdValue = normalize(payload.leaseId);
   if (leaseIdValue) {
     const lease = state.leases.find((entry) => entry.id === leaseIdValue);
@@ -785,7 +826,7 @@ function handleRunClaim(state, manifest, request) {
     attempts: 0,
   };
   state.runs.push(run);
-  const evidence = appendEvidence(state, { kind: 'run-claimed', actor: actor.id, repository, workItemId, runId: run.id, payload: { workItemId } });
+  const evidence = appendEvidence(state, { kind: 'run-claimed', actor: actor.id, repository, workItemId, runId: run.id, payload: { workItemId, acceptanceContract: acceptanceContractRequired(state, repository) ? { issueNumber: payload.acceptanceContract.issueNumber } : null } });
   appendEvidenceLog(request.runtimeRoot, evidence);
   return operationSuccess(state, request, { runId: run.id, status: run.status });
 }
