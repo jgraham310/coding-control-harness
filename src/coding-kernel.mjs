@@ -1495,7 +1495,10 @@ function parseRequestFromArgv(argv) {
   return request;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// macOS exposes /tmp through /private/tmp.  Compare canonical filesystem paths
+// so the process/JSON boundary works from either spelling rather than silently
+// exiting without a receipt.
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(new URL(import.meta.url))) {
   try {
     const request = parseRequestFromArgv(process.argv.slice(2));
     const result = executeKernelOperation(request);

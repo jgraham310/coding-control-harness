@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+const script = new URL("../src/work-state-runtime.mjs", import.meta.url).pathname;
+const state = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "work-state-")), "runtime.json"); const at = "2026-09-19T13:30:00.000Z";
+const run = (command, args) => JSON.parse(execFileSync("node", [script, command, "--state", state, "--at", at, ...args], { encoding: "utf8" }));
+run("record-evidence", ["--receipt", JSON.stringify({ id: "intake", source: "test", artifact: "sha256:intake", status: "observed", excerpts: [], facts: [] })]);
+run("register", ["--record", JSON.stringify({ id: "restart", objective: "survive restart", acceptanceTests: ["restart state persists"], authorityBoundary: { allowedActions: ["inspect"] }, owner: "test", nextAction: "inspect", evidenceRefs: ["intake"] })]);
+const action = { id: "inspect", idempotencyKey: "restart:inspect", class: "inspect", description: "inspect" };
+assert.equal(run("transition", ["--id", "restart", "--expected-version", "1", "--patch", JSON.stringify({ phase: "active", nextAction: "complete" }), "--action", JSON.stringify(action), "--rationale", "test"]).record.version, 2);
+assert.equal(run("context", ["--id", "restart"]).pendingActions.length, 1, "fresh process reads persisted action");
+const stale = spawnSync("node", [script, "transition", "--state", state, "--at", at, "--id", "restart", "--expected-version", "1", "--patch", JSON.stringify({ phase: "waiting" }), "--action", JSON.stringify({ ...action, id: "stale", idempotencyKey: "stale" }), "--rationale", "stale"], { encoding: "utf8" });
+assert.notEqual(stale.status, 0); assert.match(stale.stderr, /Stale WorkState version/);
+console.log("work-state runtime restart tests: passed");

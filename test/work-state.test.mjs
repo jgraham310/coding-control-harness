@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import { completeAction, emptyWorkStateRuntime, recordEvidence, registerWorkState, transitionWorkState, workStateContext } from "../src/work-state.mjs";
+const at = "2026-09-19T13:30:00.000Z"; const runtime = emptyWorkStateRuntime();
+recordEvidence(runtime, { id: "intake", source: "test", artifact: "sha256:intake", status: "observed", excerpts: ["failure"], facts: ["CI failed"] }, at);
+registerWorkState(runtime, { id: "lane", objective: "Repair CI safely", acceptanceTests: ["stale writes fail", "duplicate action does not replay"], authorityBoundary: { allowedActions: ["inspect", "retry_safe"] }, nextAction: "inspect", owner: "controller", evidenceRefs: ["intake"] }, at);
+const action = { id: "inspect", idempotencyKey: "lane:inspect:1", class: "inspect", description: "Inspect exact failure" };
+assert.equal(transitionWorkState(runtime, "lane", 1, { phase: "active", nextAction: "run targeted test" }, action, "intake evidence requires inspection", at).record.version, 2);
+assert.throws(() => transitionWorkState(runtime, "lane", 1, { phase: "waiting" }, { ...action, id: "stale", idempotencyKey: "lane:stale" }, "stale", at), /Stale WorkState version/);
+assert.equal(transitionWorkState(runtime, "lane", 2, { phase: "waiting" }, { ...action, id: "duplicate" }, "duplicate", at).created, false);
+recordEvidence(runtime, { id: "result", source: "test", artifact: "sha256:result", status: "passed", excerpts: ["passed"], facts: ["safe"] }, at);
+assert.equal(completeAction(runtime, "inspect", "succeeded", "result", at).status, "succeeded");
+assert.equal(workStateContext(runtime, "lane", "result").pendingActions.length, 0);
+assert.throws(() => transitionWorkState(runtime, "lane", 2, { phase: "completed" }, { id: "bad", idempotencyKey: "bad", class: "draft", description: "bad" }, "bad", at), /outside the WorkState authority boundary/);
+console.log("work-state tests: passed");
