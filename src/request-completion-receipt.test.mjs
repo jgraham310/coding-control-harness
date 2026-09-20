@@ -69,6 +69,38 @@ assert.ok(reasonsFor({ ...base, tests: [{ ...base.tests[0], status: 'queued' }] 
 const narrated = buildReceipt({ ...base, tests: [], evidence: { summary: 'the agent reports the work is complete' } });
 assert.equal(evaluateReceipt(narrated, { expected, verification: verifierOf(narrated) }).accepted, false);
 
+// --- hand-authored receipts must satisfy the published shape (finding 1) ----
+// A receipt can reach publish as raw JSON that never passed through buildReceipt.
+// Forge one with a self-consistent digest so every other gate is satisfied.
+const forge = (body) => ({ ...body, digest: receiptDigest(body) });
+const canonical = { ...receipt };
+delete canonical.digest;
+
+const unnamed = forge({ ...canonical, tests: [{ status: 'passed', headSha: HEAD }] });
+assert.equal(unnamed.digest, receiptDigest(unnamed), 'the forgery is internally consistent');
+assert.equal(verifierOf(unnamed).result, 'verified', 'digest and head gates alone do not catch it');
+assert.ok(evaluateReceipt(unnamed, { expected, verification: verifierOf(unnamed) }).reasons.includes('malformed-receipt'),
+  'a test entry without a name or command is not a named deterministic test');
+
+const noCommand = forge({ ...canonical, tests: [{ name: 'receipt', status: 'passed', headSha: HEAD }] });
+assert.ok(evaluateReceipt(noCommand, { expected, verification: verifierOf(noCommand) }).reasons.includes('malformed-receipt'));
+
+const padded = forge({ ...canonical, closesRequest: true });
+assert.ok(evaluateReceipt(padded, { expected, verification: verifierOf(padded) }).reasons.includes('receipt-not-canonical'),
+  'an unknown field cannot ride along in the receipt');
+
+const rawEvidence = forge({ ...canonical, evidence: { stdout: 'ghp_aaaaaaaaaaaaaaaaaaaa' } });
+const rawReasons = evaluateReceipt(rawEvidence, { expected, verification: verifierOf(rawEvidence) }).reasons;
+assert.ok(rawReasons.includes('receipt-not-canonical') && rawReasons.includes('sensitive-content'),
+  'unredacted evidence cannot bypass build-time redaction');
+
+const missingRecovery = forge({ ...canonical, outcome: 'failed', recovery: null });
+assert.ok(evaluateReceipt(missingRecovery, { expected, verification: verifierOf(missingRecovery) }).reasons.includes('malformed-receipt'));
+
+// A receipt that is actually canonical still passes, whatever its key order.
+const reordered = Object.fromEntries(Object.keys(receipt).reverse().map((key) => [key, receipt[key]]));
+assert.deepEqual(evaluateReceipt(reordered, { expected, verification: verifierOf(receipt) }), { accepted: true, reasons: [] });
+
 // --- verifier separation ----------------------------------------------------
 assert.ok(evaluateReceipt(receipt, { expected }).reasons.includes('verification-missing'));
 assert.ok(evaluateReceipt(receipt, { expected, verification: verifierOf(receipt, base.executor) }).reasons.includes('verifier-not-independent'));

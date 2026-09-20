@@ -65,11 +65,13 @@ function normalizeTests(tests) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Recovery metadata is operator-authored prose on the failure path, so it is
+// exactly where a pasted token ends up.  Redact it like any other evidence.
 function normalizeRecovery(recovery) {
   return {
-    reason: text(recovery?.reason, 'recovery.reason'),
-    nextAction: text(recovery?.nextAction, 'recovery.nextAction'),
-    escalation: text(recovery?.escalation, 'recovery.escalation'),
+    reason: redactEvidence(text(recovery?.reason, 'recovery.reason')),
+    nextAction: redactEvidence(text(recovery?.nextAction, 'recovery.nextAction')),
+    escalation: redactEvidence(text(recovery?.escalation, 'recovery.escalation')),
   };
 }
 
@@ -154,6 +156,18 @@ export function evaluateReceipt(receipt, { expected, verification, transport = '
   if (receipt?.contractVersion !== CONTRACT_VERSION) reasons.push('contract-version-mismatch');
   if (receipt?.digest !== receiptDigest(receipt ?? {})) reasons.push('digest-mismatch');
 
+  // A receipt can arrive as hand-authored JSON that never passed through
+  // buildReceipt, so re-derive it here: rebuilding enforces every field the
+  // published schema requires -- named tests with commands, recovery metadata on
+  // a non-completion, redacted evidence -- and a canonical receipt rebuilds to
+  // the same digest.  Comparing digests rather than text keeps it key-order
+  // independent.
+  try {
+    if (receiptDigest(buildReceipt(receipt)) !== receiptDigest(receipt ?? {})) reasons.push('receipt-not-canonical');
+  } catch {
+    reasons.push('malformed-receipt');
+  }
+
   // The binding is supplied by the request, not the receipt: an absent expectation
   // is a hold, never an implicit match.
   if (!expected?.henryRequestId || !expected?.workItemId || !expected?.repository || !expected?.headSha) reasons.push('expected-binding-missing');
@@ -204,7 +218,7 @@ export function publishReceipt(ledger, receipt, context = {}) {
   const existing = ledger.receipts[requestId] ?? null;
 
   if (!accepted) {
-    const hold = { at, henryRequestId: requestId, digest: receipt?.digest ?? null, outcome: receipt?.outcome ?? null, reasons, recovery: receipt?.recovery ?? null };
+    const hold = { at, henryRequestId: requestId, digest: receipt?.digest ?? null, outcome: receipt?.outcome ?? null, reasons, recovery: redactEvidence(receipt?.recovery ?? null) };
     const duplicate = ledger.holds.find((entry) => entry.digest === hold.digest && entry.henryRequestId === requestId && String(entry.reasons) === String(reasons));
     const holds = duplicate ? ledger.holds : [...ledger.holds, hold];
     return { ledger: { ...ledger, holds }, decision: duplicate ? 'deduplicated_hold' : 'held', closesHenryRequest: false, reasons, entry: duplicate ?? hold };
@@ -222,15 +236,27 @@ export function publishReceipt(ledger, receipt, context = {}) {
 
 // ---------------------------------------------------------------- file adapter
 
-// ponytail: exclusive-create lock with a bounded spin. Fine for a handful of
-// publishers; swap for a real queue if concurrent publishers ever exceed that.
-function withLedgerLock(ledgerPath, fn) {
+// ponytail: exclusive-create lock with a bounded spin, plus age-based reclaim so
+// a publisher killed mid-write cannot wedge publication forever. Fine for a
+// handful of publishers; swap for a real queue if that ever stops being true.
+export const LEDGER_LOCK_STALE_MS = 60 * 1000;
+
+function withLedgerLock(ledgerPath, fn, staleMs = LEDGER_LOCK_STALE_MS) {
   const lock = `${ledgerPath}.lock`;
   const sleeper = new Int32Array(new SharedArrayBuffer(4));
   fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
   let descriptor;
   for (let attempt = 0; attempt < 200 && descriptor === undefined; attempt += 1) {
-    try { descriptor = fs.openSync(lock, 'wx'); } catch { Atomics.wait(sleeper, 0, 0, 25); }
+    try {
+      descriptor = fs.openSync(lock, 'wx');
+      fs.writeSync(descriptor, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }));
+    } catch {
+      // A live publish takes milliseconds, so a lock older than staleMs belongs
+      // to a process that died. Reclaim it; the exclusive create still decides
+      // who wins the retry.
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > staleMs) fs.unlinkSync(lock); } catch {}
+      Atomics.wait(sleeper, 0, 0, 25);
+    }
   }
   if (descriptor === undefined) fail(`could not acquire completion ledger lock at ${lock}`);
   try {
