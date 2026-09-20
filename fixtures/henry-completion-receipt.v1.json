@@ -13,19 +13,19 @@
     "tests": [
       {
         "name": "request-completion-receipt",
-        "command": "node test/request-completion-receipt.test.mjs",
+        "command": "node src/request-completion-receipt.test.mjs",
         "status": "passed",
         "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
       },
       {
         "name": "request-completion-receipt-fault",
-        "command": "node test/request-completion-receipt-fault.test.mjs",
+        "command": "node src/request-completion-receipt-fault.test.mjs",
         "status": "passed",
         "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
       },
       {
         "name": "request-completion-receipt-contract",
-        "command": "node test/request-completion-receipt-contract.test.mjs",
+        "command": "node src/request-completion-receipt-contract.test.mjs",
         "status": "passed",
         "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
       },
@@ -68,19 +68,19 @@
       },
       {
         "name": "request-completion-receipt",
-        "command": "node test/request-completion-receipt.test.mjs",
+        "command": "node src/request-completion-receipt.test.mjs",
         "status": "passed",
         "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
       },
       {
         "name": "request-completion-receipt-contract",
-        "command": "node test/request-completion-receipt-contract.test.mjs",
+        "command": "node src/request-completion-receipt-contract.test.mjs",
         "status": "passed",
         "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
       },
       {
         "name": "request-completion-receipt-fault",
-        "command": "node test/request-completion-receipt-fault.test.mjs",
+        "command": "node src/request-completion-receipt-fault.test.mjs",
         "status": "passed",
         "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
       }
@@ -92,13 +92,13 @@
       "suite": "npm test"
     },
     "recovery": null,
-    "digest": "sha256:35d0debf2ac9d968b506eb3afaa4f468f8b26230e307c5baaa26d79752ff82fd"
+    "digest": "sha256:779e95884a4a9a5252fc7fe51ab58df6f33bcf05b0506fb068dceb549be95e86"
   },
   "expectedVerification": {
     "verifierId": "henry/independent-verifier",
     "verifiedAt": "2026-09-20T12:05:00.000Z",
     "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4",
-    "receiptDigest": "sha256:35d0debf2ac9d968b506eb3afaa4f468f8b26230e307c5baaa26d79752ff82fd",
+    "receiptDigest": "sha256:779e95884a4a9a5252fc7fe51ab58df6f33bcf05b0506fb068dceb549be95e86",
     "result": "verified"
   },
   "expectedDecision": "accepted",

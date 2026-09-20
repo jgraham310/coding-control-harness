@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {
   CONTRACT_VERSION, RECEIPT_SCHEMA, buildReceipt, emptyLedger, evaluateReceipt,
   publishReceipt, receiptDigest, verifyIndependently,
-} from '../src/request-completion-receipt.mjs';
+} from './request-completion-receipt.mjs';
 
 const HEAD = 'a'.repeat(40);
 const OTHER_HEAD = 'b'.repeat(40);

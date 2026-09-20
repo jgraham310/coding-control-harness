@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { buildReceipt, readLedgerFile, verifyIndependently } from '../src/request-completion-receipt.mjs';
+import { buildReceipt, readLedgerFile, verifyIndependently } from './request-completion-receipt.mjs';
 
 const run = promisify(execFile);
-const script = new URL('../src/request-completion-receipt.mjs', import.meta.url).pathname;
+const script = new URL('./request-completion-receipt.mjs', import.meta.url).pathname;
 const ledger = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'completion-receipt-')), 'ledger.json');
 const HEAD = 'c'.repeat(40);
 const STALE_HEAD = 'd'.repeat(40);

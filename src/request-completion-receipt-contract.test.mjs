@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {
   CONTRACT_VERSION, PLACEMENT_RECEIPT, RECEIPT_SCHEMA, buildReceipt, emptyLedger,
   publishReceipt, receiptDigest, redactEvidence, redactionFindings, verifyIndependently,
-} from '../src/request-completion-receipt.mjs';
+} from './request-completion-receipt.mjs';
 
 const read = (name) => JSON.parse(fs.readFileSync(new URL(name, import.meta.url), 'utf8'));
 const fixture = read('../fixtures/henry-completion-receipt.v1.json');
