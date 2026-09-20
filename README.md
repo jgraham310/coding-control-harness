@@ -140,6 +140,48 @@ Run tests for the kernel through the project script:
 npm test
 ```
 
+## Engineering completion receipts
+
+`src/request-completion-receipt.mjs` produces the versioned receipt the Henry
+Operating System accepts as proof that an engineering request is finished. A
+receipt binds one Henry request, one coding work item, one repository, one exact
+reviewed head, and named deterministic test evidence captured at that head.
+
+```sh
+node src/request-completion-receipt.mjs publish --ledger ledger.json \
+  --receipt "$(cat receipt.json)" --context "$(cat context.json)"
+npm run receipt:test
+```
+
+A request closes only when every one of these holds:
+
+- the receipt binding matches the request, work item, repository, and reviewed head
+- at least one named deterministic test is recorded as passed at that exact head
+- a verifier that is not the executor recomputed the receipt digest and confirmed it
+- the publish transport confirmed, and the receipt carries no credential or raw log
+
+Anything else is typed and held rather than silently downgraded: a stale head, a
+mismatched request, missing test evidence, a queued run, a bare success claim, an
+uncertain transport, or a rival receipt for a request that is already closed. A
+failed, blocked, or uncertain execution publishes as a non-completion receipt
+carrying recovery and escalation metadata, and can never close the request.
+
+Uniqueness is per Henry request, so replays, restarts, and concurrent publishers
+converge on one accepted receipt. Evidence is redacted at build time: credential
+fields are dropped and raw logs survive only as `sha256` handles.
+
+The contract is coordinated offline. `schemas/request-completion-receipt.schema.json`
+is the published shape and `fixtures/henry-completion-receipt.v1.json` is the
+consumer fixture; neither depends on a live network call or mutable branch state.
+
+| Placement | Value |
+| --- | --- |
+| Owner | coding-control-harness |
+| Enforcement | typed receipt producer and independent-verification contract |
+| Governance consumer | Henry Operating System |
+| Contract | `engineering_completion_receipt/v1@1.0.0` |
+| Audit | immutable receipt digests, held reasons, explicit non-completion outcomes |
+
 ## Running it
 
 ```sh

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "request-completion-receipt",
+  "title": "Engineering Completion Receipt",
+  "description": "Versioned offline contract consumed by the Henry Operating System. A receipt binds one Henry request, one work item, one repository, one exact reviewed head, and named deterministic test evidence at that head.",
+  "type": "object",
+  "required": ["schema", "contractVersion", "henryRequestId", "workItemId", "repository", "headSha", "outcome", "executor", "producedAt", "tests", "evidence", "recovery", "digest"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "engineering_completion_receipt/v1" },
+    "contractVersion": { "const": "1.0.0" },
+    "henryRequestId": { "type": "string", "minLength": 1 },
+    "workItemId": { "type": "string", "minLength": 1 },
+    "repository": { "type": "string", "minLength": 1 },
+    "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "outcome": { "enum": ["completed", "failed", "blocked", "uncertain"] },
+    "executor": { "type": "string", "minLength": 1 },
+    "producedAt": { "type": "string", "format": "date-time" },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "command", "status", "headSha"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "command": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["passed", "failed", "skipped", "queued", "unknown"] },
+          "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+        }
+      }
+    },
+    "evidence": { "type": "object", "description": "Redacted handles only. Credential-shaped keys are dropped and raw logs are reduced to sha256 handles." },
+    "recovery": {
+      "description": "Required for every non-completion outcome; null for a completion.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["reason", "nextAction", "escalation"],
+          "additionalProperties": false,
+          "properties": {
+            "reason": { "type": "string", "minLength": 1 },
+            "nextAction": { "type": "string", "minLength": 1 },
+            "escalation": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "outcome": { "const": "completed" } } },
+      "then": {
+        "properties": { "tests": { "minItems": 1, "items": { "properties": { "status": { "const": "passed" } } } }, "recovery": { "type": "null" } }
+      }
+    }
+  ]
+}

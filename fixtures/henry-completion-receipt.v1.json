@@ -1,0 +1,106 @@
+{
+  "schema": "henry_completion_receipt_fixture/v1",
+  "contract": "engineering_completion_receipt/v1@1.0.0",
+  "note": "Offline coordination fixture for the Henry ledger consumer. No network, no branch state, no production or customer data.",
+  "scenario": {
+    "henryRequestId": "HENRY-REQ-8",
+    "workItemId": "coding-wi-8",
+    "repository": "jgraham310/coding-control-harness",
+    "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4",
+    "outcome": "completed",
+    "executor": "coding-control-harness/executor",
+    "producedAt": "2026-09-20T12:00:00.000Z",
+    "tests": [
+      {
+        "name": "request-completion-receipt",
+        "command": "node src/request-completion-receipt.test.mjs",
+        "status": "passed",
+        "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
+      },
+      {
+        "name": "request-completion-receipt-fault",
+        "command": "node src/request-completion-receipt-fault.test.mjs",
+        "status": "passed",
+        "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
+      },
+      {
+        "name": "request-completion-receipt-contract",
+        "command": "node src/request-completion-receipt-contract.test.mjs",
+        "status": "passed",
+        "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
+      },
+      {
+        "name": "coding-kernel",
+        "command": "node test/coding-kernel.test.mjs",
+        "status": "passed",
+        "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
+      }
+    ],
+    "evidence": {
+      "fixtureRepository": "file:///fixtures/disposable-completion-repo",
+      "reviewedHead": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4",
+      "suite": "npm test",
+      "stdout": "kernel tests passed\ntoken=ghp_aaaaaaaaaaaaaaaaaaaa",
+      "authorizationToken": "ghp_bbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "verifier": {
+    "verifierId": "henry/independent-verifier",
+    "at": "2026-09-20T12:05:00.000Z"
+  },
+  "publishedAt": "2026-09-20T12:06:00.000Z",
+  "expectedReceipt": {
+    "schema": "engineering_completion_receipt/v1",
+    "contractVersion": "1.0.0",
+    "henryRequestId": "HENRY-REQ-8",
+    "workItemId": "coding-wi-8",
+    "repository": "jgraham310/coding-control-harness",
+    "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4",
+    "outcome": "completed",
+    "executor": "coding-control-harness/executor",
+    "producedAt": "2026-09-20T12:00:00.000Z",
+    "tests": [
+      {
+        "name": "coding-kernel",
+        "command": "node test/coding-kernel.test.mjs",
+        "status": "passed",
+        "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
+      },
+      {
+        "name": "request-completion-receipt",
+        "command": "node src/request-completion-receipt.test.mjs",
+        "status": "passed",
+        "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
+      },
+      {
+        "name": "request-completion-receipt-contract",
+        "command": "node src/request-completion-receipt-contract.test.mjs",
+        "status": "passed",
+        "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
+      },
+      {
+        "name": "request-completion-receipt-fault",
+        "command": "node src/request-completion-receipt-fault.test.mjs",
+        "status": "passed",
+        "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4"
+      }
+    ],
+    "evidence": {
+      "fixtureRepository": "file:///fixtures/disposable-completion-repo",
+      "reviewedHead": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4",
+      "stdoutDigest": "sha256:fc647cf0b16eed902516c1f1078d8cf9130a3e6cd4dcca26c2791df132e24201",
+      "suite": "npm test"
+    },
+    "recovery": null,
+    "digest": "sha256:779e95884a4a9a5252fc7fe51ab58df6f33bcf05b0506fb068dceb549be95e86"
+  },
+  "expectedVerification": {
+    "verifierId": "henry/independent-verifier",
+    "verifiedAt": "2026-09-20T12:05:00.000Z",
+    "headSha": "4f1d2c9b7a63e50f8d21c4ab90e7f635d8c1a2b4",
+    "receiptDigest": "sha256:779e95884a4a9a5252fc7fe51ab58df6f33bcf05b0506fb068dceb549be95e86",
+    "result": "verified"
+  },
+  "expectedDecision": "accepted",
+  "expectedClosesHenryRequest": true
+}
