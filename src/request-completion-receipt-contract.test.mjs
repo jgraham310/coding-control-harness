@@ -59,6 +59,33 @@ assert.deepEqual(redactionFindings({ evidence: { authToken: 'x' } }), ['receipt.
 assert.deepEqual(redactionFindings({ evidence: { stderr: 'trace' } }), ['receipt.evidence.stderr exposes a raw private log']);
 assert.deepEqual(redactionFindings({ evidence: { note: 'ghp_abcdefghijklmnopqrst' } }), ['receipt.evidence.note contains a credential-shaped value']);
 
+// --- the rejection path must not archive what it rejected (finding 3) ------
+const TOKEN = 'Bearer abcdefghijklmnopqrstuvwxyz0123456789';
+const leaky = buildReceipt({
+  henryRequestId: 'HENRY-REQ-LEAK', workItemId: 'wi-leak', repository: 'acme/fixture',
+  headSha: 'e'.repeat(40), outcome: 'failed', executor: 'harness/executor',
+  producedAt: '2026-09-20T00:00:00.000Z',
+  tests: [{ name: 'receipt', command: 'node src/request-completion-receipt.test.mjs', status: 'failed', headSha: 'e'.repeat(40) }],
+  evidence: { suite: 'npm test' },
+  recovery: { reason: `auth failed with ${TOKEN}`, nextAction: 'rotate and retry', escalation: 'Jason authority' },
+});
+assert.ok(!JSON.stringify(leaky).includes(TOKEN), 'recovery metadata is redacted at build time');
+assert.match(leaky.recovery.reason, /redacted:sha256:[0-9a-f]{64}/);
+assert.equal(leaky.recovery.nextAction, 'rotate and retry', 'benign recovery text survives intact');
+
+// Defence in depth: a hand-authored receipt that never passed through
+// buildReceipt still must not land in the durable hold unredacted.
+const rawRecovery = { ...leaky, recovery: { reason: `auth failed with ${TOKEN}`, nextAction: 'rotate and retry', escalation: 'Jason authority' } };
+const held = publishReceipt(emptyLedger(), rawRecovery, {
+  expected: { henryRequestId: 'HENRY-REQ-LEAK', workItemId: 'wi-leak', repository: 'acme/fixture', headSha: 'e'.repeat(40) },
+  verification: verifyIndependently(rawRecovery, { verifierId: 'henry/verifier', at: '2026-09-20T00:01:00.000Z' }),
+  at: '2026-09-20T00:02:00.000Z',
+});
+assert.equal(held.closesHenryRequest, false);
+assert.ok(held.reasons.includes('sensitive-content'));
+assert.ok(!JSON.stringify(held.ledger).includes(TOKEN), 'the durable ledger never archives the rejected credential');
+assert.equal(Object.keys(held.ledger.receipts).length, 0);
+
 // --- placement receipt ------------------------------------------------------
 assert.deepEqual(PLACEMENT_RECEIPT, {
   owner: 'coding-control-harness',

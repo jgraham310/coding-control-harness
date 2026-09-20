@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { buildReceipt, readLedgerFile, verifyIndependently } from './request-completion-receipt.mjs';
+import { buildReceipt, readLedgerFile, receiptDigest, verifyIndependently } from './request-completion-receipt.mjs';
 
 const run = promisify(execFile);
 const script = new URL('./request-completion-receipt.mjs', import.meta.url).pathname;
@@ -100,6 +100,30 @@ assert.equal(readLedgerFile(ledger).receipts['HENRY-REQ-10'], undefined);
 const holdsBefore = readLedgerFile(ledger).holds.length;
 assert.equal(publish(stale, contextFor(stale, { at: '2026-09-20T04:00:00.000Z' })).decision, 'deduplicated_hold');
 assert.equal(readLedgerFile(ledger).holds.length, holdsBefore);
+
+// --- a forged receipt is rejected at the CLI boundary (finding 1) ----------
+const forgedLedger = path.join(path.dirname(ledger), 'forged.json');
+const forgedBody = { ...receipt, tests: [{ status: 'passed', headSha: HEAD }] };
+delete forgedBody.digest;
+const forged = { ...forgedBody, digest: receiptDigest(forgedBody) };
+const forgedResult = JSON.parse(execFileSync('node', [script, 'publish', '--ledger', forgedLedger,
+  '--receipt', JSON.stringify(forged), '--context', JSON.stringify(contextFor(forged))], { encoding: 'utf8' }));
+assert.equal(forgedResult.closesHenryRequest, false, 'hand-authored JSON cannot close a request');
+assert.ok(forgedResult.reasons.includes('malformed-receipt'));
+assert.equal(Object.keys(readLedgerFile(forgedLedger).receipts).length, 0);
+
+// --- a lock orphaned by a killed publisher is reclaimed (finding 4) --------
+const orphanLedger = path.join(path.dirname(ledger), 'orphan.json');
+const orphanLock = `${orphanLedger}.lock`;
+fs.writeFileSync(orphanLock, JSON.stringify({ pid: 999999, at: '2026-09-20T00:00:00.000Z' }));
+const orphanAge = new Date(Date.now() - 5 * 60 * 1000);
+fs.utimesSync(orphanLock, orphanAge, orphanAge);
+const orphanReceipt = receiptFor({ henryRequestId: 'HENRY-REQ-12', workItemId: 'wi-12' });
+const reclaimed = JSON.parse(execFileSync('node', [script, 'publish', '--ledger', orphanLedger,
+  '--receipt', JSON.stringify(orphanReceipt),
+  '--context', JSON.stringify(contextFor(orphanReceipt, { expected: { ...expected, henryRequestId: 'HENRY-REQ-12', workItemId: 'wi-12' } }))], { encoding: 'utf8' }));
+assert.equal(reclaimed.decision, 'accepted', 'a stale lock must not wedge publication');
+assert.equal(fs.existsSync(orphanLock), false, 'the reclaimed lock is released');
 
 // --- a failed execution is a typed non-completion ---------------------------
 const failedLedger = path.join(path.dirname(ledger), 'failed.json');
