@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "execution-loop-receipt",
+  "title": "Execution Loop Receipt",
+  "description": "Versioned offline contract for execution-loop events consumed by the Henry Operating System. A receipt binds one exact task, repository, head, event kind and derived idempotency key. Stale, malformed, duplicate, cross-task or unverifiable receipts authorize nothing, and no receipt can mark an improvement experiment permanent.",
+  "type": "object",
+  "required": ["schema", "contractVersion", "taskId", "repository", "headSha", "eventKind", "result", "occurrence", "idempotencyKey", "producer", "producedAt", "details", "evidence", "digest"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "execution_loop_receipt/v1" },
+    "contractVersion": { "const": "1.0.0" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "repository": { "type": "string", "minLength": 1 },
+    "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "eventKind": { "enum": ["pr_terminal", "lane_liveness", "regression_failed", "improvement_experiment"] },
+    "result": { "enum": ["merged", "closed_unmerged", "superseded", "executing", "idle_at_prompt", "stopped", "unknown", "reproduced_at_head", "not_reproduced", "improved", "regressed", "inconclusive"] },
+    "occurrence": { "type": "string", "minLength": 1, "description": "Producer-supplied discriminator for legitimate repeats of one event at one head." },
+    "idempotencyKey": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Derived from schema, contract version, task, repository, head, event kind and occurrence; re-derivable offline and never producer-supplied." },
+    "producer": { "type": "string", "minLength": 1 },
+    "producedAt": { "type": "string", "format": "date-time" },
+    "details": {
+      "type": "object",
+      "description": "Event-kind specific payload.",
+      "oneOf": [
+        {
+          "title": "pr_terminal",
+          "required": ["pullRequest", "mergeCommitSha"],
+          "additionalProperties": false,
+          "properties": {
+            "pullRequest": { "type": "integer", "minimum": 1 },
+            "mergeCommitSha": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{40}$" }] }
+          }
+        },
+        {
+          "title": "lane_liveness",
+          "required": ["laneId", "observedAt", "staleAfterSeconds"],
+          "additionalProperties": false,
+          "properties": {
+            "laneId": { "type": "string", "minLength": 1 },
+            "observedAt": { "type": "string", "format": "date-time" },
+            "staleAfterSeconds": { "type": "integer", "minimum": 1 }
+          }
+        },
+        {
+          "title": "regression_failed",
+          "required": ["testName", "command", "exitCode"],
+          "additionalProperties": false,
+          "properties": {
+            "testName": { "type": "string", "minLength": 1 },
+            "command": { "type": "string", "minLength": 1 },
+            "exitCode": { "type": "integer" }
+          }
+        },
+        {
+          "title": "improvement_experiment",
+          "required": ["experimentId", "hypothesis", "permanent", "bounds"],
+          "additionalProperties": false,
+          "properties": {
+            "experimentId": { "type": "string", "minLength": 1 },
+            "hypothesis": { "type": "string", "minLength": 1 },
+            "permanent": { "const": false, "description": "Invariant 4: an experiment receipt can never mark an experiment permanent." },
+            "bounds": {
+              "type": "object",
+              "required": ["maxIterations", "expiresAt"],
+              "additionalProperties": false,
+              "properties": {
+                "maxIterations": { "type": "integer", "minimum": 1 },
+                "expiresAt": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "evidence": { "type": "object", "description": "Redacted handles only. Credential-shaped keys are dropped and raw logs are reduced to sha256 handles." },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

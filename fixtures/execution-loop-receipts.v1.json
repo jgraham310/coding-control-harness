@@ -1,0 +1,628 @@
+{
+  "schema": "henry_execution_loop_fixture/v1",
+  "contract": "execution_loop_receipt/v1@1.0.0",
+  "note": "Offline coordination fixture for the Henry execution-loop consumer. No network, no branch state, no production or customer data.",
+  "evaluatedAt": "2026-09-21T12:10:00.000Z",
+  "valid": [
+    {
+      "name": "pr_terminal",
+      "scenario": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test",
+          "authorizationToken": "ghp_aaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "evaluatedAt": "2026-09-21T12:10:00.000Z",
+      "expectedReceipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:0166a2335069ead1a8dc3e8eb76ed0830d508641e3df407bbedfcbee6aeb3992"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+      },
+      "expectedAuthorizesDispatch": false
+    },
+    {
+      "name": "lane_liveness_idle",
+      "scenario": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "lane_liveness",
+        "result": "idle_at_prompt",
+        "occurrence": "poll-2026-09-21T12-05",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:05:00.000Z",
+        "details": {
+          "laneId": "lane-a",
+          "observedAt": "2026-09-21T12:04:50.000Z",
+          "staleAfterSeconds": 120
+        },
+        "evidence": {
+          "probe": "prompt-detector"
+        }
+      },
+      "evaluatedAt": "2026-09-21T12:05:10.000Z",
+      "expectedReceipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "lane_liveness",
+        "result": "idle_at_prompt",
+        "occurrence": "poll-2026-09-21T12-05",
+        "idempotencyKey": "sha256:0ab45c6fbac3d22417c9ca421f3e8f7f1a8f58f189a9f56fd076a10b53703f6a",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:05:00.000Z",
+        "details": {
+          "laneId": "lane-a",
+          "observedAt": "2026-09-21T12:04:50.000Z",
+          "staleAfterSeconds": 120
+        },
+        "evidence": {
+          "probe": "prompt-detector"
+        },
+        "digest": "sha256:5ae7db1379233bd9e83d5e0ee4f62fa18cbee990e117934f29669228d077d2f5"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "lane_liveness",
+        "idempotencyKey": "sha256:0ab45c6fbac3d22417c9ca421f3e8f7f1a8f58f189a9f56fd076a10b53703f6a"
+      },
+      "expectedAuthorizesDispatch": true
+    },
+    {
+      "name": "lane_liveness_unknown",
+      "scenario": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "lane_liveness",
+        "result": "unknown",
+        "occurrence": "poll-2026-09-21T12-06",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:06:00.000Z",
+        "details": {
+          "laneId": "lane-b",
+          "observedAt": "2026-09-21T12:05:55.000Z",
+          "staleAfterSeconds": 120
+        },
+        "evidence": {
+          "probe": "prompt-detector",
+          "note": "no transcript response"
+        }
+      },
+      "evaluatedAt": "2026-09-21T12:06:10.000Z",
+      "expectedReceipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "lane_liveness",
+        "result": "unknown",
+        "occurrence": "poll-2026-09-21T12-06",
+        "idempotencyKey": "sha256:da27be0f71347534ab34c6e733961aae662efd46c7acf6370955e0ba9d96793d",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:06:00.000Z",
+        "details": {
+          "laneId": "lane-b",
+          "observedAt": "2026-09-21T12:05:55.000Z",
+          "staleAfterSeconds": 120
+        },
+        "evidence": {
+          "note": "no transcript response",
+          "probe": "prompt-detector"
+        },
+        "digest": "sha256:45598421806af16a46ed22a586369ede59d04a1656d6cbf730a42a489827ad75"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "lane_liveness",
+        "idempotencyKey": "sha256:da27be0f71347534ab34c6e733961aae662efd46c7acf6370955e0ba9d96793d"
+      },
+      "expectedAuthorizesDispatch": false
+    },
+    {
+      "name": "regression_failed",
+      "scenario": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "regression_failed",
+        "result": "reproduced_at_head",
+        "occurrence": "regression-1",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:07:00.000Z",
+        "details": {
+          "testName": "liveness-receipt",
+          "command": "node src/liveness-receipt.test.mjs",
+          "exitCode": 1
+        },
+        "evidence": {
+          "stdout": "assertion failed at lane-a\ntoken=ghp_bbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "evaluatedAt": "2026-09-21T12:10:00.000Z",
+      "expectedReceipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "regression_failed",
+        "result": "reproduced_at_head",
+        "occurrence": "regression-1",
+        "idempotencyKey": "sha256:a2f893c3dc806542d770b9a21bab49612b0cf987a6808175620a187dde5b43e9",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:07:00.000Z",
+        "details": {
+          "testName": "liveness-receipt",
+          "command": "node src/liveness-receipt.test.mjs",
+          "exitCode": 1
+        },
+        "evidence": {
+          "stdoutDigest": "sha256:7c642dba872a464164e5ea34ccc09fa955f1c0f4488bde061dd9cb32019a5333"
+        },
+        "digest": "sha256:64d0c73df7737d5c2d831800f443c5dc0b3f07dd1ffb4c5b9d9210562f09221e"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "regression_failed",
+        "idempotencyKey": "sha256:a2f893c3dc806542d770b9a21bab49612b0cf987a6808175620a187dde5b43e9"
+      },
+      "expectedAuthorizesDispatch": false
+    },
+    {
+      "name": "improvement_experiment",
+      "scenario": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "improvement_experiment",
+        "result": "inconclusive",
+        "occurrence": "experiment-1",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:08:00.000Z",
+        "details": {
+          "experimentId": "exp-dispatch-backoff",
+          "hypothesis": "a longer idle confirmation window lowers duplicate dispatch",
+          "bounds": {
+            "maxIterations": 3,
+            "expiresAt": "2026-09-28T00:00:00.000Z"
+          }
+        },
+        "evidence": {
+          "sampleSize": 12
+        }
+      },
+      "evaluatedAt": "2026-09-21T12:10:00.000Z",
+      "expectedReceipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "improvement_experiment",
+        "result": "inconclusive",
+        "occurrence": "experiment-1",
+        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:08:00.000Z",
+        "details": {
+          "experimentId": "exp-dispatch-backoff",
+          "hypothesis": "a longer idle confirmation window lowers duplicate dispatch",
+          "permanent": false,
+          "bounds": {
+            "maxIterations": 3,
+            "expiresAt": "2026-09-28T00:00:00.000Z"
+          }
+        },
+        "evidence": {
+          "sampleSize": 12
+        },
+        "digest": "sha256:3746aa83ee8a1396d233bc08390c4833975e678cd4d866f253840a176b09ee30"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "improvement_experiment",
+        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b"
+      },
+      "expectedAuthorizesDispatch": false
+    }
+  ],
+  "rejected": [
+    {
+      "name": "stale-head",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:840451b8f4b8572075168840cef9d31bd00d7c92a706d28432bb416ef94f97f9",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:99edf5c879c44584f05b7ec28f54798f80ec6cd61161740cc26410af1f48b352"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "idempotency-key-mismatch",
+        "stale-head"
+      ]
+    },
+    {
+      "name": "cross-task",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-99",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:c7edcec990ca88a48e010e4bb6c3d3e92c53f4697d9c613c6ae161cecd805ae6",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:be600e53ca984720b00c1c46617d1ee4a1ee14a663e4361b0d4a995bf6047c3a"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "cross-task-receipt",
+        "idempotency-key-mismatch"
+      ]
+    },
+    {
+      "name": "tampered-digest",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "closed_unmerged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:0166a2335069ead1a8dc3e8eb76ed0830d508641e3df407bbedfcbee6aeb3992"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "digest-mismatch"
+      ]
+    },
+    {
+      "name": "forged-idempotency-key",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:0ab45c6fbac3d22417c9ca421f3e8f7f1a8f58f189a9f56fd076a10b53703f6a",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:d12a3caff495ca0a47994b87509a371a544553c97e7d0c7c1d4cbd06cddba9ce"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "idempotency-key-mismatch",
+        "idempotency-key-unbound"
+      ]
+    },
+    {
+      "name": "stale-liveness-observation",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "lane_liveness",
+        "result": "idle_at_prompt",
+        "occurrence": "poll-2026-09-21T12-05",
+        "idempotencyKey": "sha256:0ab45c6fbac3d22417c9ca421f3e8f7f1a8f58f189a9f56fd076a10b53703f6a",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:05:00.000Z",
+        "details": {
+          "laneId": "lane-a",
+          "observedAt": "2026-09-21T11:00:00.000Z",
+          "staleAfterSeconds": 120
+        },
+        "evidence": {
+          "probe": "prompt-detector"
+        },
+        "digest": "sha256:206f14df99eb9517fbbf6ad1da23c59a5e78f196feb4783d2e0e3b9ed7c6e67c"
+      },
+      "expectedBinding": null,
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "stale-liveness-observation"
+      ]
+    },
+    {
+      "name": "experiment-marked-permanent",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "improvement_experiment",
+        "result": "inconclusive",
+        "occurrence": "experiment-1",
+        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:08:00.000Z",
+        "details": {
+          "experimentId": "exp-dispatch-backoff",
+          "hypothesis": "a longer idle confirmation window lowers duplicate dispatch",
+          "permanent": true,
+          "bounds": {
+            "maxIterations": 3,
+            "expiresAt": "2026-09-28T00:00:00.000Z"
+          }
+        },
+        "evidence": {
+          "sampleSize": 12
+        },
+        "digest": "sha256:c14a7a6cf1830ffb20e9f06392a2cd63b68c4f69fa5186f0f6412aa657d4050e"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "improvement_experiment",
+        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "experiment-marked-permanent"
+      ]
+    },
+    {
+      "name": "experiment-expired",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "improvement_experiment",
+        "result": "inconclusive",
+        "occurrence": "experiment-1",
+        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:08:00.000Z",
+        "details": {
+          "experimentId": "exp-dispatch-backoff",
+          "hypothesis": "a longer idle confirmation window lowers duplicate dispatch",
+          "permanent": false,
+          "bounds": {
+            "maxIterations": 3,
+            "expiresAt": "2026-09-28T00:00:00.000Z"
+          }
+        },
+        "evidence": {
+          "sampleSize": 12
+        },
+        "digest": "sha256:3746aa83ee8a1396d233bc08390c4833975e678cd4d866f253840a176b09ee30"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "improvement_experiment",
+        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b"
+      },
+      "at": "2026-10-01T00:00:00.000Z",
+      "reasons": [
+        "experiment-expired"
+      ]
+    },
+    {
+      "name": "malformed-missing-fields",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "malformed-receipt"
+      ]
+    },
+    {
+      "name": "sensitive-content",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test",
+          "note": "ghp_cccccccccccccccccccc"
+        },
+        "digest": "sha256:86cdb9360df140893f1df6109b44ee72e7b2012a7e829c6f88d95d2eebe549b5"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "sensitive-content"
+      ]
+    },
+    {
+      "name": "unbound-expectation",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:0166a2335069ead1a8dc3e8eb76ed0830d508641e3df407bbedfcbee6aeb3992"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "expected-binding-missing"
+      ]
+    }
+  ],
+  "expectedLedgerRecordCount": 5
+}

@@ -224,7 +224,10 @@ export function publishReceipt(ledger, receipt, context = {}) {
 
 // ponytail: exclusive-create lock with a bounded spin. Fine for a handful of
 // publishers; swap for a real queue if concurrent publishers ever exceed that.
-function withLedgerLock(ledgerPath, fn) {
+// The shape hooks let a sibling ledger (execution-loop receipts) reuse the lock
+// without a second copy of it.
+export function withLedgerLock(ledgerPath, fn, { empty = emptyLedger, validate = validateLedger } = {}) {
+  ledgerPath = path.resolve(ledgerPath);
   const lock = `${ledgerPath}.lock`;
   const sleeper = new Int32Array(new SharedArrayBuffer(4));
   fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
@@ -234,7 +237,7 @@ function withLedgerLock(ledgerPath, fn) {
   }
   if (descriptor === undefined) fail(`could not acquire completion ledger lock at ${lock}`);
   try {
-    const ledger = fs.existsSync(ledgerPath) ? validateLedger(JSON.parse(fs.readFileSync(ledgerPath, 'utf8'))) : emptyLedger();
+    const ledger = fs.existsSync(ledgerPath) ? validate(JSON.parse(fs.readFileSync(ledgerPath, 'utf8'))) : empty();
     const result = fn(ledger);
     const temporary = `${ledgerPath}.${process.pid}.tmp`;
     fs.writeFileSync(temporary, `${JSON.stringify(result.ledger, null, 2)}\n`);
@@ -247,12 +250,12 @@ function withLedgerLock(ledgerPath, fn) {
 }
 
 export function publishToLedgerFile(ledgerPath, receipt, context) {
-  return withLedgerLock(path.resolve(ledgerPath), (ledger) => publishReceipt(ledger, receipt, context));
+  return withLedgerLock(ledgerPath, (ledger) => publishReceipt(ledger, receipt, context));
 }
 
-export function readLedgerFile(ledgerPath) {
+export function readLedgerFile(ledgerPath, { empty = emptyLedger, validate = validateLedger } = {}) {
   const resolved = path.resolve(ledgerPath);
-  return fs.existsSync(resolved) ? validateLedger(JSON.parse(fs.readFileSync(resolved, 'utf8'))) : emptyLedger();
+  return fs.existsSync(resolved) ? validate(JSON.parse(fs.readFileSync(resolved, 'utf8'))) : empty();
 }
 
 function cli() {

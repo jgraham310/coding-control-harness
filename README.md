@@ -182,6 +182,50 @@ consumer fixture; neither depends on a live network call or mutable branch state
 | Contract | `engineering_completion_receipt/v1@1.0.0` |
 | Audit | immutable receipt digests, held reasons, explicit non-completion outcomes |
 
+## Execution-loop receipts
+
+`src/execution-loop-receipt.mjs` produces the versioned receipts for the loop
+events underneath a completion: PR terminal state, lane liveness, a deterministic
+regression that failed, and a bounded improvement experiment. Every receipt binds
+one exact task, repository, head, event kind and idempotency key -- and the key is
+derived from those, never supplied, so it is re-derivable offline and cannot be
+borrowed from another task.
+
+```sh
+node src/execution-loop-receipt.mjs record --ledger execution-loop.json \
+  --receipt "$(cat receipt.json)" --context "$(cat context.json)"
+npm run execution-loop:test
+```
+
+Everything else fails closed and authorizes nothing: a stale head, a stale
+liveness observation, a cross-task receipt, a tampered or re-sealed body, a
+truncated record, a missing expectation, or a rival receipt under a key that is
+already recorded. Accepted records are immutable, and a task's PR terminal state
+is written once.
+
+Liveness distinguishes `executing`, `idle_at_prompt`, `stopped` and `unknown`.
+Only `idle_at_prompt` on an admissible, fresh receipt authorizes dispatch;
+`unknown` never does, and neither does a receipt evaluated without a clock. The
+freshness window is producer-attested, so a dispatcher can cap it with
+`maxStaleSeconds` in the evaluation context and refuse a stretched claim.
+
+Improvement-experiment receipts are bounded by `maxIterations` and `expiresAt`,
+and `permanent` is written `false` by the producer and re-checked on evaluation:
+no receipt, forged or re-sealed, can mark an experiment permanent.
+
+`schemas/execution-loop-receipt.schema.json` is the published shape and
+`fixtures/execution-loop-receipts.v1.json` is the consumer fixture, carrying both
+the records a clean clone must accept and the ones it must reject with their
+exact reasons; neither depends on a live network call or mutable branch state.
+
+| Placement | Value |
+| --- | --- |
+| Owner | coding-control-harness |
+| Enforcement | typed execution-loop receipt producer with exact task/repo/head/event/idempotency binding |
+| Governance consumer | Henry Operating System |
+| Contract | `execution_loop_receipt/v1@1.0.0` |
+| Audit | immutable receipt digests, fail-closed hold reasons, permanently bounded experiments |
+
 ## Running it
 
 ```sh
