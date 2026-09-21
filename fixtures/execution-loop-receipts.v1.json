@@ -35,7 +35,7 @@
         "eventKind": "pr_terminal",
         "result": "merged",
         "occurrence": "pr-11-terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:00:00.000Z",
         "details": {
@@ -46,14 +46,15 @@
           "checks": "green",
           "suite": "npm test"
         },
-        "digest": "sha256:0166a2335069ead1a8dc3e8eb76ed0830d508641e3df407bbedfcbee6aeb3992"
+        "digest": "sha256:cff56153633dbe64743764e0a512118831c2040ab6838502bd8e5175b40ddd89"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "pr_terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
       },
       "expectedAuthorizesDispatch": false
     },
@@ -87,7 +88,7 @@
         "eventKind": "lane_liveness",
         "result": "idle_at_prompt",
         "occurrence": "poll-2026-09-21T12-05",
-        "idempotencyKey": "sha256:0ab45c6fbac3d22417c9ca421f3e8f7f1a8f58f189a9f56fd076a10b53703f6a",
+        "idempotencyKey": "sha256:ed5952f8373ccd1349486b8d597bb2b90819c816c6bcb55f2379d376e1d368ed",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:05:00.000Z",
         "details": {
@@ -98,14 +99,15 @@
         "evidence": {
           "probe": "prompt-detector"
         },
-        "digest": "sha256:5ae7db1379233bd9e83d5e0ee4f62fa18cbee990e117934f29669228d077d2f5"
+        "digest": "sha256:c0ae7d56a88bcc81649d0c1ee34bbb2d3e23e211d5edad938b9b4744f0a0e304"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "lane_liveness",
-        "idempotencyKey": "sha256:0ab45c6fbac3d22417c9ca421f3e8f7f1a8f58f189a9f56fd076a10b53703f6a"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:ed5952f8373ccd1349486b8d597bb2b90819c816c6bcb55f2379d376e1d368ed"
       },
       "expectedAuthorizesDispatch": true
     },
@@ -140,7 +142,7 @@
         "eventKind": "lane_liveness",
         "result": "unknown",
         "occurrence": "poll-2026-09-21T12-06",
-        "idempotencyKey": "sha256:da27be0f71347534ab34c6e733961aae662efd46c7acf6370955e0ba9d96793d",
+        "idempotencyKey": "sha256:dbfabc5b5875ec32ceb5a5999ac2fce91d1678a1358b8e12da8c9f81e83f4372",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:06:00.000Z",
         "details": {
@@ -152,14 +154,15 @@
           "note": "no transcript response",
           "probe": "prompt-detector"
         },
-        "digest": "sha256:45598421806af16a46ed22a586369ede59d04a1656d6cbf730a42a489827ad75"
+        "digest": "sha256:301fcaeb6fbc0eb859e3e3043a411e06bb60fc383f4291866e2ae43c822fd182"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "lane_liveness",
-        "idempotencyKey": "sha256:da27be0f71347534ab34c6e733961aae662efd46c7acf6370955e0ba9d96793d"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:dbfabc5b5875ec32ceb5a5999ac2fce91d1678a1358b8e12da8c9f81e83f4372"
       },
       "expectedAuthorizesDispatch": false
     },
@@ -193,7 +196,7 @@
         "eventKind": "regression_failed",
         "result": "reproduced_at_head",
         "occurrence": "regression-1",
-        "idempotencyKey": "sha256:a2f893c3dc806542d770b9a21bab49612b0cf987a6808175620a187dde5b43e9",
+        "idempotencyKey": "sha256:a2243eb74ba57f78938485c2d4034e4a666d41ea195d58507cc8e518a12153b9",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:07:00.000Z",
         "details": {
@@ -204,14 +207,15 @@
         "evidence": {
           "stdoutDigest": "sha256:7c642dba872a464164e5ea34ccc09fa955f1c0f4488bde061dd9cb32019a5333"
         },
-        "digest": "sha256:64d0c73df7737d5c2d831800f443c5dc0b3f07dd1ffb4c5b9d9210562f09221e"
+        "digest": "sha256:b77b2fef2ff0ba4f340a9e73d6948927adac1c2e8410757e03591c4c8190b7ba"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "regression_failed",
-        "idempotencyKey": "sha256:a2f893c3dc806542d770b9a21bab49612b0cf987a6808175620a187dde5b43e9"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:a2243eb74ba57f78938485c2d4034e4a666d41ea195d58507cc8e518a12153b9"
       },
       "expectedAuthorizesDispatch": false
     },
@@ -248,7 +252,7 @@
         "eventKind": "improvement_experiment",
         "result": "inconclusive",
         "occurrence": "experiment-1",
-        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b",
+        "idempotencyKey": "sha256:d38dab447df6854996b5f3622fcccaa6c22e74dc2d4ad9dc68926b2a8c2d77b5",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:08:00.000Z",
         "details": {
@@ -263,14 +267,15 @@
         "evidence": {
           "sampleSize": 12
         },
-        "digest": "sha256:3746aa83ee8a1396d233bc08390c4833975e678cd4d866f253840a176b09ee30"
+        "digest": "sha256:0ac62530cf7b287d34607d75221c4907e8f1388e439d9f1bb71f90b2a5868e45"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "improvement_experiment",
-        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:d38dab447df6854996b5f3622fcccaa6c22e74dc2d4ad9dc68926b2a8c2d77b5"
       },
       "expectedAuthorizesDispatch": false
     }
@@ -287,7 +292,7 @@
         "eventKind": "pr_terminal",
         "result": "merged",
         "occurrence": "pr-11-terminal",
-        "idempotencyKey": "sha256:840451b8f4b8572075168840cef9d31bd00d7c92a706d28432bb416ef94f97f9",
+        "idempotencyKey": "sha256:8237b7cb0fe041b293a9909ac4b88a467874ef2f08b24c5ebf69a80c4f2cf939",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:00:00.000Z",
         "details": {
@@ -298,14 +303,15 @@
           "checks": "green",
           "suite": "npm test"
         },
-        "digest": "sha256:99edf5c879c44584f05b7ec28f54798f80ec6cd61161740cc26410af1f48b352"
+        "digest": "sha256:d74a78b44f32214396fb84e1b8e8da170fefc43204fe01a096f40ebb0b427b80"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "pr_terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
       },
       "at": "2026-09-21T12:10:00.000Z",
       "reasons": [
@@ -324,7 +330,7 @@
         "eventKind": "pr_terminal",
         "result": "merged",
         "occurrence": "pr-11-terminal",
-        "idempotencyKey": "sha256:c7edcec990ca88a48e010e4bb6c3d3e92c53f4697d9c613c6ae161cecd805ae6",
+        "idempotencyKey": "sha256:e62f07667fc30391862ff3ee341ce63d8ed996b44e89f60feb71f340b6c543fa",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:00:00.000Z",
         "details": {
@@ -335,14 +341,15 @@
           "checks": "green",
           "suite": "npm test"
         },
-        "digest": "sha256:be600e53ca984720b00c1c46617d1ee4a1ee14a663e4361b0d4a995bf6047c3a"
+        "digest": "sha256:17e12b8d4bb5ba5767bca1aec7bb77550c2d965596bd8a53fef893eb1f1cd4aa"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "pr_terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
       },
       "at": "2026-09-21T12:10:00.000Z",
       "reasons": [
@@ -361,7 +368,7 @@
         "eventKind": "pr_terminal",
         "result": "closed_unmerged",
         "occurrence": "pr-11-terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:00:00.000Z",
         "details": {
@@ -372,14 +379,15 @@
           "checks": "green",
           "suite": "npm test"
         },
-        "digest": "sha256:0166a2335069ead1a8dc3e8eb76ed0830d508641e3df407bbedfcbee6aeb3992"
+        "digest": "sha256:cff56153633dbe64743764e0a512118831c2040ab6838502bd8e5175b40ddd89"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "pr_terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
       },
       "at": "2026-09-21T12:10:00.000Z",
       "reasons": [
@@ -397,7 +405,7 @@
         "eventKind": "pr_terminal",
         "result": "merged",
         "occurrence": "pr-11-terminal",
-        "idempotencyKey": "sha256:0ab45c6fbac3d22417c9ca421f3e8f7f1a8f58f189a9f56fd076a10b53703f6a",
+        "idempotencyKey": "sha256:ed5952f8373ccd1349486b8d597bb2b90819c816c6bcb55f2379d376e1d368ed",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:00:00.000Z",
         "details": {
@@ -408,14 +416,15 @@
           "checks": "green",
           "suite": "npm test"
         },
-        "digest": "sha256:d12a3caff495ca0a47994b87509a371a544553c97e7d0c7c1d4cbd06cddba9ce"
+        "digest": "sha256:12c916a07a0aa7829e317271dbb26f222200f530b0c287ecbd338121ef67f9de"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "pr_terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
       },
       "at": "2026-09-21T12:10:00.000Z",
       "reasons": [
@@ -434,7 +443,7 @@
         "eventKind": "lane_liveness",
         "result": "idle_at_prompt",
         "occurrence": "poll-2026-09-21T12-05",
-        "idempotencyKey": "sha256:0ab45c6fbac3d22417c9ca421f3e8f7f1a8f58f189a9f56fd076a10b53703f6a",
+        "idempotencyKey": "sha256:ed5952f8373ccd1349486b8d597bb2b90819c816c6bcb55f2379d376e1d368ed",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:05:00.000Z",
         "details": {
@@ -445,7 +454,7 @@
         "evidence": {
           "probe": "prompt-detector"
         },
-        "digest": "sha256:206f14df99eb9517fbbf6ad1da23c59a5e78f196feb4783d2e0e3b9ed7c6e67c"
+        "digest": "sha256:40ea02a7693697d9f36a1891e72365ac8c25e40ada2a5d92ef1e67b68b6d534c"
       },
       "expectedBinding": null,
       "at": "2026-09-21T12:10:00.000Z",
@@ -464,7 +473,7 @@
         "eventKind": "improvement_experiment",
         "result": "inconclusive",
         "occurrence": "experiment-1",
-        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b",
+        "idempotencyKey": "sha256:d38dab447df6854996b5f3622fcccaa6c22e74dc2d4ad9dc68926b2a8c2d77b5",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:08:00.000Z",
         "details": {
@@ -479,14 +488,15 @@
         "evidence": {
           "sampleSize": 12
         },
-        "digest": "sha256:c14a7a6cf1830ffb20e9f06392a2cd63b68c4f69fa5186f0f6412aa657d4050e"
+        "digest": "sha256:7f177e5c501a1a210d4ce781d725f69f95ea9c0c1e15290041c8b72ae429b644"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "improvement_experiment",
-        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:d38dab447df6854996b5f3622fcccaa6c22e74dc2d4ad9dc68926b2a8c2d77b5"
       },
       "at": "2026-09-21T12:10:00.000Z",
       "reasons": [
@@ -504,7 +514,7 @@
         "eventKind": "improvement_experiment",
         "result": "inconclusive",
         "occurrence": "experiment-1",
-        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b",
+        "idempotencyKey": "sha256:d38dab447df6854996b5f3622fcccaa6c22e74dc2d4ad9dc68926b2a8c2d77b5",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:08:00.000Z",
         "details": {
@@ -519,18 +529,208 @@
         "evidence": {
           "sampleSize": 12
         },
-        "digest": "sha256:3746aa83ee8a1396d233bc08390c4833975e678cd4d866f253840a176b09ee30"
+        "digest": "sha256:0ac62530cf7b287d34607d75221c4907e8f1388e439d9f1bb71f90b2a5868e45"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "improvement_experiment",
-        "idempotencyKey": "sha256:0a1aaf8514c1d5723f50748aad7ddd7717bf9a4f7ce481ebbdc76d1fdec5506b"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:d38dab447df6854996b5f3622fcccaa6c22e74dc2d4ad9dc68926b2a8c2d77b5"
       },
       "at": "2026-10-01T00:00:00.000Z",
       "reasons": [
         "experiment-expired"
+      ]
+    },
+    {
+      "name": "forged-producer",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee",
+        "producer": "impostor/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:41ba04ef99d065b11c13ae78afdc4f7736f65b04b833dff03ddd48b566854d3d"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "idempotency-key-unbound",
+        "producer-mismatch"
+      ]
+    },
+    {
+      "name": "impostor-cannot-occupy-the-key",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:3d63429805a36c3cab2b66accadd07c343ecd0ab398ecfa628a4bfdf3ad04fac",
+        "producer": "impostor/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:43761c2bcf6d4ea313abe43be87bc04be009e409e78556aad47e5fad503100ff"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "idempotency-key-mismatch",
+        "producer-mismatch"
+      ]
+    },
+    {
+      "name": "details-from-another-event-kind",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "laneId": "lane-a",
+          "observedAt": "2026-09-21T12:10:00.000Z",
+          "staleAfterSeconds": 60
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:f77dbbdfb8a811fa7ab5e40b4af91d5427a7a24723bea85fd179e25a2fab2f87"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "malformed-details"
+      ]
+    },
+    {
+      "name": "details-mistyped-field",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "regression_failed",
+        "result": "reproduced_at_head",
+        "occurrence": "regression-1",
+        "idempotencyKey": "sha256:a2243eb74ba57f78938485c2d4034e4a666d41ea195d58507cc8e518a12153b9",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:07:00.000Z",
+        "details": {
+          "testName": "liveness-receipt",
+          "command": "node src/liveness-receipt.test.mjs",
+          "exitCode": "1"
+        },
+        "evidence": {
+          "stdoutDigest": "sha256:7c642dba872a464164e5ea34ccc09fa955f1c0f4488bde061dd9cb32019a5333"
+        },
+        "digest": "sha256:8d10689fc901786b2d16a8334c0515ebea98470fd2bcebd9c33f72ec6ed22d84"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "regression_failed",
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:a2243eb74ba57f78938485c2d4034e4a666d41ea195d58507cc8e518a12153b9"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "malformed-details"
+      ]
+    },
+    {
+      "name": "details-extra-property",
+      "receipt": {
+        "schema": "execution_loop_receipt/v1",
+        "contractVersion": "1.0.0",
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "result": "merged",
+        "occurrence": "pr-11-terminal",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee",
+        "producer": "coding-control-harness/execution-loop",
+        "producedAt": "2026-09-21T12:00:00.000Z",
+        "details": {
+          "pullRequest": 11,
+          "mergeCommitSha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e",
+          "note": "smuggled"
+        },
+        "evidence": {
+          "checks": "green",
+          "suite": "npm test"
+        },
+        "digest": "sha256:95a4941bb31d51a90b80fb2deef833ed7542f7c5ce853354c139251e44db0107"
+      },
+      "expectedBinding": {
+        "taskId": "coding-wi-11",
+        "repository": "jgraham310/coding-control-harness",
+        "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
+        "eventKind": "pr_terminal",
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
+      },
+      "at": "2026-09-21T12:10:00.000Z",
+      "reasons": [
+        "malformed-details"
       ]
     },
     {
@@ -545,7 +745,8 @@
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "pr_terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
       },
       "at": "2026-09-21T12:10:00.000Z",
       "reasons": [
@@ -563,7 +764,7 @@
         "eventKind": "pr_terminal",
         "result": "merged",
         "occurrence": "pr-11-terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:00:00.000Z",
         "details": {
@@ -575,14 +776,15 @@
           "suite": "npm test",
           "note": "ghp_cccccccccccccccccccc"
         },
-        "digest": "sha256:86cdb9360df140893f1df6109b44ee72e7b2012a7e829c6f88d95d2eebe549b5"
+        "digest": "sha256:04ab2e1a020ac2f7d0de0e297724029fb51598eb6d135ef034367897658ede79"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",
         "repository": "jgraham310/coding-control-harness",
         "headSha": "7a3c19be48d2f05c6b81e4a7d93f2c08b5164ae9",
         "eventKind": "pr_terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00"
+        "producer": "coding-control-harness/execution-loop",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee"
       },
       "at": "2026-09-21T12:10:00.000Z",
       "reasons": [
@@ -600,7 +802,7 @@
         "eventKind": "pr_terminal",
         "result": "merged",
         "occurrence": "pr-11-terminal",
-        "idempotencyKey": "sha256:7a6fe18b0cdb26017f3dc35a1d39332eb62b4769372c8e1fc851ac955dcd9a00",
+        "idempotencyKey": "sha256:3dd91ee5ca85a82bd72963b1ff8e7b40ef434647dacb0bc95933890c30309aee",
         "producer": "coding-control-harness/execution-loop",
         "producedAt": "2026-09-21T12:00:00.000Z",
         "details": {
@@ -611,7 +813,7 @@
           "checks": "green",
           "suite": "npm test"
         },
-        "digest": "sha256:0166a2335069ead1a8dc3e8eb76ed0830d508641e3df407bbedfcbee6aeb3992"
+        "digest": "sha256:cff56153633dbe64743764e0a512118831c2040ab6838502bd8e5175b40ddd89"
       },
       "expectedBinding": {
         "taskId": "coding-wi-11",

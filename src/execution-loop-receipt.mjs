@@ -65,15 +65,19 @@ export function receiptDigest(receipt) {
 
 /**
  * The idempotency key is derived, never supplied: a producer cannot mint a key
- * that belongs to another task, head or event, and any consumer can re-derive
- * it offline from the receipt alone.  `occurrence` separates legitimate repeats
- * of the same event at the same head (a later liveness poll, a repair attempt).
+ * that belongs to another task, head, event or *producer*, and any consumer can
+ * re-derive it offline from the receipt alone.  Binding the producer is what
+ * makes the key provenance-bearing -- a digest only proves a body is internally
+ * consistent, not who wrote it, so an impostor re-sealing a body under its own
+ * name lands on a different key and can never occupy the original's slot.
+ * `occurrence` separates legitimate repeats of the same event at the same head
+ * (a later liveness poll, a repair attempt).
  */
-export function deriveIdempotencyKey({ taskId, repository, headSha: head, eventKind, occurrence }) {
+export function deriveIdempotencyKey({ taskId, repository, headSha: head, eventKind, producer, occurrence }) {
   return sha256([
     RECEIPT_SCHEMA, CONTRACT_VERSION,
     text(taskId, 'taskId'), text(repository, 'repository'), headSha(head),
-    text(eventKind, 'eventKind'), text(occurrence, 'occurrence'),
+    text(eventKind, 'eventKind'), text(producer, 'producer'), text(occurrence, 'occurrence'),
   ].join('\n'));
 }
 
@@ -157,34 +161,50 @@ export function evaluateExecutionReceipt(receipt, { expected, at, maxStaleSecond
   try { derived = deriveIdempotencyKey(receipt); } catch { reasons.push('malformed-receipt'); }
   if (derived && derived !== receipt.idempotencyKey) reasons.push('idempotency-key-unbound');
 
-  const binding = ['taskId', 'repository', 'headSha', 'eventKind', 'idempotencyKey'];
+  const binding = ['taskId', 'repository', 'headSha', 'eventKind', 'producer', 'idempotencyKey'];
   if (!expected || binding.some((key) => !expected[key])) reasons.push('expected-binding-missing');
   if (expected?.taskId && receipt.taskId !== expected.taskId) reasons.push('cross-task-receipt');
   if (expected?.repository && receipt.repository !== expected.repository) reasons.push('repository-mismatch');
   if (expected?.headSha && receipt.headSha !== expected.headSha) reasons.push('stale-head');
   if (expected?.eventKind && receipt.eventKind !== expected.eventKind) reasons.push('event-kind-mismatch');
+  if (expected?.producer && receipt.producer !== expected.producer) reasons.push('producer-mismatch');
   if (expected?.idempotencyKey && receipt.idempotencyKey !== expected.idempotencyKey) reasons.push('idempotency-key-mismatch');
 
   const now = at === undefined ? null : Date.parse(at);
   const needsClock = receipt.eventKind === 'lane_liveness' || receipt.eventKind === 'improvement_experiment';
   if (needsClock && !Number.isFinite(now)) reasons.push('evaluation-time-missing');
 
-  if (receipt.eventKind === 'lane_liveness') {
-    const observed = Date.parse(receipt.details?.observedAt ?? '');
-    const window = receipt.details?.staleAfterSeconds;
-    if (!Number.isFinite(observed) || !Number.isInteger(window) || window <= 0) reasons.push('malformed-receipt');
-    else {
-      // The freshness window is producer-attested, so a consumer may cap it;
-      // an uncapped claim cannot be stretched past the dispatcher's own policy.
-      if (Number.isInteger(maxStaleSeconds) && window > maxStaleSeconds) reasons.push('liveness-window-too-wide');
-      if (Number.isFinite(now) && (now - observed > window * 1000 || observed > now)) reasons.push('stale-liveness-observation');
-    }
+  // `details` is discriminated by eventKind, so it is re-normalized and compared
+  // rather than spot-checked: a payload belonging to another kind, a missing or
+  // mistyped field, or an extra one is malformed even when the digest agrees.
+  // Permanence is exempted here so it keeps its own dedicated reason below.
+  let wellFormedDetails = false;
+  try {
+    const normalized = normalizeDetails(receipt.eventKind, receipt.details);
+    const comparable = receipt.eventKind === 'improvement_experiment'
+      ? { ...normalized, permanent: receipt.details?.permanent }
+      : normalized;
+    wellFormedDetails = JSON.stringify(stable(comparable)) === JSON.stringify(stable(receipt.details));
+  } catch { wellFormedDetails = false; }
+  if (!wellFormedDetails) reasons.push('malformed-details');
+
+  if (receipt.eventKind === 'lane_liveness' && wellFormedDetails) {
+    const observed = Date.parse(receipt.details.observedAt);
+    const window = receipt.details.staleAfterSeconds;
+    // The freshness window is producer-attested, so a consumer may cap it;
+    // an uncapped claim cannot be stretched past the dispatcher's own policy.
+    if (Number.isInteger(maxStaleSeconds) && window > maxStaleSeconds) reasons.push('liveness-window-too-wide');
+    if (Number.isFinite(now) && (now - observed > window * 1000 || observed > now)) reasons.push('stale-liveness-observation');
   }
 
   if (receipt.eventKind === 'improvement_experiment') {
+    // Permanence and the bounds keep their own reasons rather than hiding
+    // inside the structural check: an operator needs to see *which* invariant
+    // an experiment receipt broke.
     const bounds = receipt.details?.bounds;
+    const bounded = !!bounds && Number.isInteger(bounds.maxIterations) && bounds.maxIterations > 0 && Number.isFinite(Date.parse(bounds.expiresAt ?? ''));
     if (receipt.details?.permanent !== false) reasons.push('experiment-marked-permanent');
-    if (!bounds || !Number.isInteger(bounds.maxIterations) || bounds.maxIterations <= 0 || !Number.isFinite(Date.parse(bounds.expiresAt ?? ''))) reasons.push('experiment-bounds-missing');
+    if (!bounded) reasons.push('experiment-bounds-missing');
     else if (Number.isFinite(now) && now > Date.parse(bounds.expiresAt)) reasons.push('experiment-expired');
   }
 

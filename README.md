@@ -187,15 +187,24 @@ consumer fixture; neither depends on a live network call or mutable branch state
 `src/execution-loop-receipt.mjs` produces the versioned receipts for the loop
 events underneath a completion: PR terminal state, lane liveness, a deterministic
 regression that failed, and a bounded improvement experiment. Every receipt binds
-one exact task, repository, head, event kind and idempotency key -- and the key is
-derived from those, never supplied, so it is re-derivable offline and cannot be
-borrowed from another task.
+one exact task, repository, head, event kind, producer identity and idempotency
+key -- and the key is derived from those, never supplied, so it is re-derivable
+offline and cannot be borrowed from another task or another producer.
 
 ```sh
 node src/execution-loop-receipt.mjs record --ledger execution-loop.json \
   --receipt "$(cat receipt.json)" --context "$(cat context.json)"
 npm run execution-loop:test
 ```
+
+A digest proves a body is internally consistent, not who wrote it, so provenance
+is carried separately: the producer is part of the derived key *and* a mandatory
+part of the expectation. An expectation without a producer holds, a receipt from
+an unexpected producer is rejected, and an impostor that re-seals a body under
+its own name lands on a different key instead of occupying the original's slot.
+`details` is discriminated by event kind and re-normalized on evaluation, so a
+payload from another kind, a mistyped field, or a smuggled extra property is
+malformed even when the digest agrees.
 
 Everything else fails closed and authorizes nothing: a stale head, a stale
 liveness observation, a cross-task receipt, a tampered or re-sealed body, a

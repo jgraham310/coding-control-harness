@@ -23,7 +23,7 @@ const experimentInput = (overrides = {}) => ({
   },
   evidence: { sampleSize: 12 }, ...overrides,
 });
-const bindingOf = (r) => ({ taskId: r.taskId, repository: r.repository, headSha: r.headSha, eventKind: r.eventKind, idempotencyKey: r.idempotencyKey });
+const bindingOf = (r) => ({ taskId: r.taskId, repository: r.repository, headSha: r.headSha, eventKind: r.eventKind, producer: r.producer, idempotencyKey: r.idempotencyKey });
 const reseal = (receipt) => { const { digest, ...body } = receipt; return { ...body, digest: receiptDigest(body) }; };
 const evaluate = (receipt, at = NOW) => evaluateExecutionReceipt(receipt, { expected: bindingOf(receipt), at });
 
@@ -62,6 +62,20 @@ for (const bounds of [undefined, null, { maxIterations: 3 }, { maxIterations: In
 assert.deepEqual(evaluate(experiment, '2026-10-01T00:00:00.000Z').reasons, ['experiment-expired']);
 assert.deepEqual(evaluate(experiment, EXPIRES), { accepted: true, reasons: [] }, 'the bound is inclusive at its edge');
 assert.deepEqual(evaluateExecutionReceipt(experiment, { expected: bindingOf(experiment) }).reasons, ['evaluation-time-missing']);
+
+// --- provenance and payload shape are part of admissibility ----------------
+const impostor = buildExecutionReceipt(experimentInput({ producer: 'impostor/execution-loop' }));
+assert.deepEqual(evaluateExecutionReceipt(impostor, { expected: bindingOf(experiment), at: NOW }).reasons,
+  ['idempotency-key-mismatch', 'producer-mismatch'], 'another producer cannot report this experiment iteration');
+assert.deepEqual(evaluate(reseal({ ...experiment, producer: 'impostor/execution-loop' })).reasons, ['idempotency-key-unbound'],
+  're-sealing the body under a new name breaks the derived key');
+const { producer: unusedProducer, ...producerless } = bindingOf(experiment);
+assert.deepEqual(evaluateExecutionReceipt(experiment, { expected: producerless, at: NOW }).reasons, ['expected-binding-missing']);
+// An experiment body carrying another kind's payload is malformed, not bounded.
+assert.deepEqual(evaluate(reseal({ ...experiment, details: { testName: 't', command: 'c', exitCode: 1 } })).reasons,
+  ['experiment-bounds-missing', 'experiment-marked-permanent', 'malformed-details']);
+// An extra property smuggled beside the bounds is malformed too.
+assert.deepEqual(evaluate(reseal({ ...experiment, details: { ...experiment.details, promote: true } })).reasons, ['malformed-details']);
 
 // --- an experiment receipt never authorizes dispatch ------------------------
 assert.deepEqual(dispatchDecision(experiment, { expected: bindingOf(experiment), at: NOW }), { authorized: false, reasons: ['not-a-liveness-receipt'] });

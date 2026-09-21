@@ -15,7 +15,7 @@ const livenessInput = (overrides = {}) => ({
   producedAt: OBSERVED, details: { laneId: 'lane-a', observedAt: OBSERVED, staleAfterSeconds: 60 },
   evidence: { probe: 'prompt-detector' }, ...overrides,
 });
-const bindingOf = (r) => ({ taskId: r.taskId, repository: r.repository, headSha: r.headSha, eventKind: r.eventKind, idempotencyKey: r.idempotencyKey });
+const bindingOf = (r) => ({ taskId: r.taskId, repository: r.repository, headSha: r.headSha, eventKind: r.eventKind, producer: r.producer, idempotencyKey: r.idempotencyKey });
 const decide = (receipt, at = NOW) => dispatchDecision(receipt, { expected: bindingOf(receipt), at });
 
 // --- the four states are exactly the ones the loop distinguishes ------------
@@ -77,6 +77,22 @@ assert.equal(malformed.ledger.holds.at(-1).at, NOW);
 const timeless = recordExecutionReceipt(emptyLedger(), { eventKind: 'lane_liveness' }, { expected: bindingOf(idle) });
 assert.equal(timeless.decision, 'held');
 assert.equal(timeless.ledger.holds.at(-1).at, null);
+// An impostor's liveness receipt never authorizes dispatch for this lane.
+const impostor = buildExecutionReceipt(livenessInput({ producer: 'impostor/execution-loop' }));
+assert.deepEqual(evaluateExecutionReceipt(impostor, { expected: bindingOf(impostor), at: NOW }), { accepted: true, reasons: [] },
+  'the impostor receipt is well formed under its own provenance');
+assert.deepEqual(dispatchDecision(impostor, { expected: bindingOf(idle), at: NOW }),
+  { authorized: false, reasons: ['idempotency-key-mismatch', 'producer-mismatch'] });
+// Re-sealing the expected producer onto that body does not recover the key.
+const renamed = (() => { const { digest, ...body } = { ...impostor, producer: idle.producer }; return { ...body, digest: receiptDigest(body) }; })();
+assert.deepEqual(dispatchDecision(renamed, { expected: bindingOf(idle), at: NOW }).reasons, ['idempotency-key-mismatch', 'idempotency-key-unbound']);
+// An expectation without a producer holds: dispatch never runs on anonymous provenance.
+const { producer: unusedProducer, ...producerless } = bindingOf(idle);
+assert.deepEqual(dispatchDecision(idle, { expected: producerless, at: NOW }).reasons, ['expected-binding-missing']);
+// A liveness body carrying another kind's payload is malformed, not idle.
+const wrongPayload = (() => { const { digest, ...body } = { ...idle, details: { pullRequest: 7, mergeCommitSha: null } }; return { ...body, digest: receiptDigest(body) }; })();
+assert.deepEqual(dispatchDecision(wrongPayload, { expected: bindingOf(wrongPayload), at: NOW }).reasons, ['malformed-details']);
+
 // A completion-style expectation that omits the event kind holds rather than matching.
 assert.deepEqual(dispatchDecision(idle, { expected: { taskId: 'wi-11', repository: 'acme/fixture', headSha: HEAD, idempotencyKey: idle.idempotencyKey }, at: NOW }).reasons, ['expected-binding-missing']);
 // A terminal receipt is not a liveness signal, however valid it is.
