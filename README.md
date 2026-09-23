@@ -235,6 +235,65 @@ exact reasons; neither depends on a live network call or mutable branch state.
 | Contract | `execution_loop_receipt/v1@1.0.0` |
 | Audit | immutable receipt digests, fail-closed hold reasons, permanently bounded experiments |
 
+## Trace-evaluation admission gate
+
+`src/trace-evaluation-gate.mjs` turns approved, bounded failure traces into
+calibrated evaluators and deterministic regression gates. The ledger stores only
+redacted trace metadata plus an immutable source digest, and that metadata is a
+closed allowlist of triage fields -- `failureSignature`, `failureClass`,
+`component`, `tool`, `status`, `exitClass`, `exitCode`, `attempts`, `count`,
+`environment` -- whose string values must be single whitespace-free tokens of at
+most 80 characters.
+
+A key denylist would not hold: raw content travels just as happily under a
+benign key like `note`, `summary` or `customPayload`. So an unknown field is
+rejected as `unsafe-metadata` whatever it is called, known content carriers
+(`rawTrace`, `prompt`, `response`, `messages`, `secret`) as `raw-content-field`,
+and the token rule means there is nowhere in an admitted sample -- allowlisted
+field, sample id or source included -- to spell a sentence of trace content.
+Private logs and credential-shaped values are rejected on top of that. Nothing
+rejected is stored, and nothing rejected is digested.
+
+```sh
+node src/trace-evaluation-gate.mjs ingest --ledger trace-gate.json --json "$(cat sample.json)"
+node src/trace-evaluation-gate.mjs calibrate --ledger trace-gate.json --mode "$MODE" --json "$(cat calibration.json)"
+node src/trace-evaluation-gate.mjs claim --ledger trace-gate.json --mode "$MODE" \
+  --json "$(cat claim.json)" --context '{"expected":{"candidateHead":"<sha>"}}'
+npm run trace-gate:test
+```
+
+A failure mode is opened by deduplicating samples on the digest of their
+redacted metadata, so two equivalent terminal-failure traces from different
+lanes collapse onto one mode with a stable digest, and a replayed source digest
+adds no observation and never opens a second mode.
+
+A mode is admitted for evaluation only on human-labeled calibration evidence:
+a labeled calibration set *and* a held-out set, both with confusion counts that
+account for every sample, a recorded threshold, at least two independent
+reviewers who are not the evaluator, and held-out precision and recall that
+actually meet the threshold. A model-labeled set is the self-score this gate
+exists to refuse, whatever it is named, and any reviewer disagreement is a hold.
+
+A mode is marked protected only when a named deterministic test is recorded as
+passed at the exact candidate head the caller is gating. Everything else stays
+diagnostic and fails closed: an uncalibrated evaluator, a stale candidate head,
+a pass observed at a sibling candidate, a queued or failed run, an unnamed test,
+a missing expectation, or a pass replayed onto a second failure mode. Protection
+is bound to one head, so a new candidate proves itself again, and recalibration
+drops the previous evaluator's pass rather than inheriting it.
+
+`schemas/trace-evaluation-gate.schema.json` is the published shape, including
+the sorted set of typed hold reasons a governance consumer may see; it depends
+on no live network call, no real trace, and no mutable branch state.
+
+| Placement | Value |
+| --- | --- |
+| Owner | coding-control-harness |
+| Enforcement | trace-evaluation admission gate: redacted metadata, calibrated evaluators, exact-head deterministic regression evidence |
+| Governance consumer | Henry Operating System |
+| Contract | `trace_failure_mode/v1@1.0.0` |
+| Audit | immutable source digests, deduplicated failure modes, typed holds, protection bound to one candidate head |
+
 ## Running it
 
 ```sh

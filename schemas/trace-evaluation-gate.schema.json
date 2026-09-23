@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trace-evaluation-gate",
+  "title": "Trace Failure Mode Admission Record",
+  "description": "Versioned offline contract for trace-derived failure modes consumed by the Henry Operating System. A record stores only bounded, redacted trace metadata plus immutable source digests. A mode is admitted for evaluation only on human-labeled calibration with a held-out set, a recorded threshold and confusion counts, and is protected only by a named deterministic test that passed at the exact candidate head. Raw trace content, credentials, uncalibrated or disputed evaluators, replayed samples and stale or cross candidate heads produce typed holds and never a pass.",
+  "type": "object",
+  "required": ["schema", "contractVersion", "modeKey", "metadata", "metadataDigest", "digest", "openedAt", "observations", "evaluator", "protection"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "trace_failure_mode/v1" },
+    "contractVersion": { "const": "1.0.0" },
+    "modeKey": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Derived from the schema, contract version and redacted metadata digest; never supplied, so equivalent traces deduplicate onto one mode." },
+    "metadata": {
+      "type": "object",
+      "description": "Redacted trace metadata: a closed allowlist of failure-triage fields whose string values are single tokens of at most 80 characters with no whitespace, so a sentence of trace content cannot be spelled in any admitted field. Unknown keys are rejected at ingest as unsafe-metadata, known content carriers (raw, trace, content, prompt, response, message, secret) as raw-content-field.",
+      "minProperties": 1,
+      "maxProperties": 10,
+      "additionalProperties": false,
+      "properties": {
+        "failureSignature": { "$ref": "#/$defs/token" },
+        "failureClass": { "$ref": "#/$defs/token" },
+        "component": { "$ref": "#/$defs/token" },
+        "tool": { "$ref": "#/$defs/token" },
+        "status": { "$ref": "#/$defs/token" },
+        "exitClass": { "$ref": "#/$defs/token" },
+        "exitCode": { "$ref": "#/$defs/count" },
+        "attempts": { "$ref": "#/$defs/count" },
+        "count": { "$ref": "#/$defs/count" },
+        "environment": { "$ref": "#/$defs/token" }
+      }
+    },
+    "metadataDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Stable mode digest derived from the redacted metadata alone, unchanged by how many equivalent samples arrive or in what order." },
+    "openedAt": { "type": ["string", "null"], "format": "date-time" },
+    "admittedAt": { "type": ["string", "null"], "format": "date-time" },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Deduplicated terminal-failure observations, one per immutable source digest.",
+      "items": {
+        "type": "object",
+        "required": ["sampleId", "source", "observedAt", "outcome", "sourceDigest", "digest"],
+        "additionalProperties": false,
+        "properties": {
+          "sampleId": { "$ref": "#/$defs/token" },
+          "source": { "$ref": "#/$defs/token" },
+          "observedAt": { "type": "string", "format": "date-time" },
+          "outcome": { "enum": ["failed", "timed_out", "crashed", "aborted"] },
+          "sourceDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "evaluator": {
+      "description": "Calibration evidence, or null while the mode is uncalibrated. An uncalibrated evaluator can never protect a mode.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["schema", "contractVersion", "evaluatorId", "threshold", "calibration", "heldOut", "reviewers", "calibratedAt", "digest"],
+          "additionalProperties": false,
+          "properties": {
+            "schema": { "const": "trace_failure_mode/v1" },
+            "contractVersion": { "const": "1.0.0" },
+            "evaluatorId": { "type": "string", "minLength": 1 },
+            "threshold": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+            "calibration": {
+              "type": "object",
+              "required": ["samples", "confusion", "labeler"],
+              "additionalProperties": false,
+              "properties": {
+                "samples": { "type": "integer", "minimum": 1 },
+                "confusion": { "$ref": "#/$defs/confusion" },
+                "labeler": {
+                  "type": "object",
+                  "required": ["id", "kind"],
+                  "additionalProperties": false,
+                  "description": "Human labeler, never the evaluator itself: a model-labeled set is the self-score this gate refuses.",
+                  "properties": { "id": { "type": "string", "minLength": 1 }, "kind": { "const": "human" } }
+                }
+              }
+            },
+            "heldOut": {
+              "type": "object",
+              "required": ["samples", "confusion", "precision", "recall"],
+              "additionalProperties": false,
+              "properties": {
+                "samples": { "type": "integer", "minimum": 1 },
+                "confusion": { "$ref": "#/$defs/confusion" },
+                "precision": { "type": "number", "minimum": 0, "maximum": 1 },
+                "recall": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            },
+            "reviewers": {
+              "type": "array",
+              "minItems": 2,
+              "description": "At least two independent reviewers, none of them the evaluator; any verdict other than agree is a typed hold.",
+              "items": {
+                "type": "object",
+                "required": ["id", "verdict"],
+                "additionalProperties": false,
+                "properties": { "id": { "type": "string", "minLength": 1 }, "verdict": { "enum": ["agree", "disagree"] } }
+              }
+            },
+            "calibratedAt": { "type": "string", "format": "date-time" },
+            "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        }
+      ]
+    },
+    "protection": {
+      "description": "Named deterministic test evidence bound to one exact candidate head, or null while the mode is diagnostic.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["schema", "contractVersion", "modeKey", "candidateHead", "testName", "command", "status", "headSha", "producer", "executedAt", "digest"],
+          "additionalProperties": true,
+          "properties": {
+            "schema": { "const": "trace_failure_mode/v1" },
+            "contractVersion": { "const": "1.0.0" },
+            "modeKey": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+            "candidateHead": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "testName": { "type": "string", "minLength": 1 },
+            "command": { "type": "string", "minLength": 1 },
+            "status": { "const": "passed" },
+            "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$", "description": "Must equal candidateHead: a pass from a sibling candidate is cross-candidate evidence, not coverage." },
+            "producer": { "type": "string", "minLength": 1 },
+            "executedAt": { "type": "string", "format": "date-time" },
+            "runDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Digest of the observed test run, excluding the mode and candidate head, so one pass cannot be replayed as coverage for a second failure mode." },
+            "recordedAt": { "type": ["string", "null"], "format": "date-time" },
+            "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "token": { "type": "string", "pattern": "^[A-Za-z0-9][\\w.:@/-]{0,79}$", "description": "A single whitespace-free token of at most 80 characters." },
+    "count": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "confusion": {
+      "type": "object",
+      "required": ["truePositives", "falsePositives", "trueNegatives", "falseNegatives"],
+      "additionalProperties": false,
+      "description": "Counts must account for every sample in the set.",
+      "properties": {
+        "truePositives": { "type": "integer", "minimum": 0 },
+        "falsePositives": { "type": "integer", "minimum": 0 },
+        "trueNegatives": { "type": "integer", "minimum": 0 },
+        "falseNegatives": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "holdReasons": {
+    "description": "Stable, sorted typed hold reasons this gate may return; an empty list is the only pass.",
+    "enum": [
+      "calibration-incomplete", "confusion-matrix-missing", "cross-candidate-evidence", "evaluator-disagreement",
+      "evaluator-uncalibrated", "expected-binding-missing", "held-out-below-threshold", "held-out-missing",
+      "independent-review-missing", "malformed-calibration", "malformed-sample", "missing-source-digest",
+      "missing-test-evidence", "non-terminal-sample", "raw-content-field", "replayed-sample",
+      "replayed-test-evidence", "self-score-only", "sensitive-content", "stale-candidate-head",
+      "test-not-passed", "threshold-missing", "unknown-failure-mode", "unsafe-metadata"
+    ]
+  }
+}
