@@ -235,6 +235,62 @@ exact reasons; neither depends on a live network call or mutable branch state.
 | Contract | `execution_loop_receipt/v1@1.0.0` |
 | Audit | immutable receipt digests, fail-closed hold reasons, permanently bounded experiments |
 
+## Status-claim receipts
+
+`src/status-claim-receipt.mjs` governs the layer above both: the operational
+*statements* a report makes. Each statement binds one claim class, one runtime
+identity, one command/result digest observed on that runtime, one observation
+time, the artifact and head where the class has one, and an idempotency key
+derived from all of it -- never supplied, so a consumer re-derives the whole
+binding offline from the receipt alone.
+
+```sh
+node src/status-claim-receipt.mjs deliver --ledger status-claims.json \
+  --receipt "$(cat receipt.json)" --context "$(cat context.json)"
+npm run status-claim:test
+```
+
+Claim classes are capability-shaped, not service-shaped: `service_reachability`,
+`transport_trust`, `credential_validity`, `artifact_publication` and
+`command_outcome`. A new service is a new `runtimeId` and `source.command`, never
+a new class. Each class result maps to exactly one disposition -- `success`,
+`failure` or `blocker` -- and a report may state one only from an admitted
+receipt. Everything else renders `unverified`, which is non-factual by
+construction: the rendering is built from stable reason slugs alone, so none of
+the refused receipt's own text reaches the report.
+
+Evidence must be current and from the declared runtime. A stale or
+future-dated observation, evidence gathered on another runtime, a re-sealed
+body, a replay, a missing expectation, a receipt evaluated without a clock, or a
+declared result that contradicts its own exit code all fail closed. The
+freshness window is producer-attested, so a consumer can cap it with
+`maxObservationAgeSeconds` and refuse a stretched claim.
+
+Receipts carry structured result metadata and digests only. Raw command output,
+credential fields, and secret-bearing URLs are *rejected at construction* rather
+than redacted -- a redacted receipt would still have carried the secret through
+the producer we are constraining -- and metadata values are bounded scalars, so
+output cannot be smuggled in as a long or multi-line string. Holds store the
+binding and the reasons, never the refused payload.
+
+One receipt supports one logical claim and one delivery. A verbatim replay
+dedupes; a second delivery key over the same receipt, a second receipt over an
+already-delivered claim, and a delivery key already spent by another receipt are
+all held. Replays, restarts and concurrent publishers converge on one delivery.
+
+`fixtures/status-claim-receipts.v1.json` is the consumer fixture, carrying both
+the receipts a clean clone must accept -- with their exact renderings -- and the
+ones it must reject with their exact reasons; it depends on no live network call
+or mutable branch state.
+
+| Placement | Value |
+| --- | --- |
+| Owner | coding-control-harness |
+| Enforcement | typed status-claim receipt producer with exact class/runtime/evidence/observation/idempotency binding |
+| Governance consumer | Henry Operating System |
+| Contract | `status_claim_receipt/v1@1.0.0` |
+| Audit | immutable receipt digests, unverified-safe renderings, one claim and delivery per receipt |
+
 ## Trace-evaluation admission gate
 
 `src/trace-evaluation-gate.mjs` turns approved, bounded failure traces into
