@@ -1,0 +1,681 @@
+{
+  "schema": "henry_status_claim_fixture/v1",
+  "contract": "status_claim_receipt/v1@1.0.0",
+  "note": "Offline coordination fixture for the Henry report admission gate. Synthetic only: no network, no branch state, no production or customer data.",
+  "evaluatedAt": "2026-09-22T12:10:00.000Z",
+  "valid": [
+    {
+      "name": "service_reachability",
+      "scenario": {
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "observedAt": "2026-09-22T12:09:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 0,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "metadata": {
+          "endpointClass": "api",
+          "statusCode": 200,
+          "latencyMs": 142
+        },
+        "producedAt": "2026-09-22T12:09:01.000Z"
+      },
+      "evaluatedAt": "2026-09-22T12:10:00.000Z",
+      "expectedReceipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "observedAt": "2026-09-22T12:09:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 0,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "artifact": null,
+        "metadata": {
+          "endpointClass": "api",
+          "latencyMs": 142,
+          "statusCode": 200
+        },
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "producedAt": "2026-09-22T12:09:01.000Z",
+        "digest": "sha256:106d85fee3b1932f952bf06d2fdd5fe3903a4f63d0d8508ba4c27adc7e36887a"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "artifact": null
+      },
+      "expectedRendering": {
+        "disposition": "success",
+        "factual": true,
+        "reasons": [],
+        "statement": "service_reachability reachable on runtime harness-runtime/lane-a, observed 2026-09-22T12:09:00.000Z, evidence sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+      }
+    },
+    {
+      "name": "transport_trust",
+      "scenario": {
+        "claimClass": "transport_trust",
+        "result": "trusted",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/tls-trusted",
+        "observedAt": "2026-09-22T12:09:10.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "openssl s_client -brief",
+          "exitCode": 0,
+          "resultDigest": "sha256:d9597aae55ec7596f1246755021558b6abf27300bc8b23d4877f981a7c1a2d3d"
+        },
+        "metadata": {
+          "chainDepth": 3,
+          "verifyResult": "ok",
+          "protocol": "TLSv1.3"
+        },
+        "producedAt": "2026-09-22T12:09:11.000Z"
+      },
+      "evaluatedAt": "2026-09-22T12:10:00.000Z",
+      "expectedReceipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "transport_trust",
+        "result": "trusted",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/tls-trusted",
+        "observedAt": "2026-09-22T12:09:10.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "openssl s_client -brief",
+          "exitCode": 0,
+          "resultDigest": "sha256:d9597aae55ec7596f1246755021558b6abf27300bc8b23d4877f981a7c1a2d3d"
+        },
+        "artifact": null,
+        "metadata": {
+          "chainDepth": 3,
+          "protocol": "TLSv1.3",
+          "verifyResult": "ok"
+        },
+        "idempotencyKey": "sha256:0d6a58ef88ad435065eae91bace3ff7a60791853ace7449c5774ca4b0222a80a",
+        "producedAt": "2026-09-22T12:09:11.000Z",
+        "digest": "sha256:5d93c085b07b8086fafa2d7958e88aad586d3d605e1d86d8fda4364f66eeba24"
+      },
+      "expectedBinding": {
+        "claimClass": "transport_trust",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/tls-trusted",
+        "idempotencyKey": "sha256:0d6a58ef88ad435065eae91bace3ff7a60791853ace7449c5774ca4b0222a80a",
+        "artifact": null
+      },
+      "expectedRendering": {
+        "disposition": "success",
+        "factual": true,
+        "reasons": [],
+        "statement": "transport_trust trusted on runtime harness-runtime/lane-a, observed 2026-09-22T12:09:10.000Z, evidence sha256:d9597aae55ec7596f1246755021558b6abf27300bc8b23d4877f981a7c1a2d3d"
+      }
+    },
+    {
+      "name": "credential_validity",
+      "scenario": {
+        "claimClass": "credential_validity",
+        "result": "valid",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/auth-valid",
+        "observedAt": "2026-09-22T12:09:20.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh auth status",
+          "exitCode": 0,
+          "resultDigest": "sha256:657c96e9a5c013a3357144a8c80a8406e5dac068c37b74e27cea04059214a085"
+        },
+        "metadata": {
+          "scopeCount": 4,
+          "identityClass": "machine-user"
+        },
+        "producedAt": "2026-09-22T12:09:21.000Z"
+      },
+      "evaluatedAt": "2026-09-22T12:10:00.000Z",
+      "expectedReceipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "credential_validity",
+        "result": "valid",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/auth-valid",
+        "observedAt": "2026-09-22T12:09:20.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh auth status",
+          "exitCode": 0,
+          "resultDigest": "sha256:657c96e9a5c013a3357144a8c80a8406e5dac068c37b74e27cea04059214a085"
+        },
+        "artifact": null,
+        "metadata": {
+          "identityClass": "machine-user",
+          "scopeCount": 4
+        },
+        "idempotencyKey": "sha256:2d3e6a401250e8c118747b53ef7c500dec6eb6f1944c741d3f5de633e8f1829a",
+        "producedAt": "2026-09-22T12:09:21.000Z",
+        "digest": "sha256:4b38d774241d1c75a52bf5ebe71dceb681f588a9dd9913a0886607c1021c2bbb"
+      },
+      "expectedBinding": {
+        "claimClass": "credential_validity",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/auth-valid",
+        "idempotencyKey": "sha256:2d3e6a401250e8c118747b53ef7c500dec6eb6f1944c741d3f5de633e8f1829a",
+        "artifact": null
+      },
+      "expectedRendering": {
+        "disposition": "success",
+        "factual": true,
+        "reasons": [],
+        "statement": "credential_validity valid on runtime harness-runtime/lane-a, observed 2026-09-22T12:09:20.000Z, evidence sha256:657c96e9a5c013a3357144a8c80a8406e5dac068c37b74e27cea04059214a085"
+      }
+    },
+    {
+      "name": "artifact_publication",
+      "scenario": {
+        "claimClass": "artifact_publication",
+        "result": "published",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/branch-pushed",
+        "observedAt": "2026-09-22T12:09:30.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "git ls-remote --exit-code",
+          "exitCode": 0,
+          "resultDigest": "sha256:f7d6cbf8c2017a33d3d53ee77d9b8a421dbe150bd4157cf3c0cd29a10bf7204b"
+        },
+        "artifact": {
+          "id": "acme/fixture#feat-status-claims",
+          "headSha": "5f2a7c1db349e086a5c4f71b2e930d8641ac5b07"
+        },
+        "metadata": {
+          "refClass": "branch-head",
+          "objectsPushed": 7
+        },
+        "producedAt": "2026-09-22T12:09:31.000Z"
+      },
+      "evaluatedAt": "2026-09-22T12:10:00.000Z",
+      "expectedReceipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "artifact_publication",
+        "result": "published",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/branch-pushed",
+        "observedAt": "2026-09-22T12:09:30.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "git ls-remote --exit-code",
+          "exitCode": 0,
+          "resultDigest": "sha256:f7d6cbf8c2017a33d3d53ee77d9b8a421dbe150bd4157cf3c0cd29a10bf7204b"
+        },
+        "artifact": {
+          "id": "acme/fixture#feat-status-claims",
+          "headSha": "5f2a7c1db349e086a5c4f71b2e930d8641ac5b07"
+        },
+        "metadata": {
+          "objectsPushed": 7,
+          "refClass": "branch-head"
+        },
+        "idempotencyKey": "sha256:03fd05abad1e9e26f41fd1752de442c20edb732c5ab953756d838ef619ca8ef5",
+        "producedAt": "2026-09-22T12:09:31.000Z",
+        "digest": "sha256:75048ab187a2651c1b76f75a0ecf380836f211c2565f0ebb882d5acbf3c50053"
+      },
+      "expectedBinding": {
+        "claimClass": "artifact_publication",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/branch-pushed",
+        "idempotencyKey": "sha256:03fd05abad1e9e26f41fd1752de442c20edb732c5ab953756d838ef619ca8ef5",
+        "artifact": {
+          "id": "acme/fixture#feat-status-claims",
+          "headSha": "5f2a7c1db349e086a5c4f71b2e930d8641ac5b07"
+        }
+      },
+      "expectedRendering": {
+        "disposition": "success",
+        "factual": true,
+        "reasons": [],
+        "statement": "artifact_publication published on runtime harness-runtime/lane-a, observed 2026-09-22T12:09:30.000Z, evidence sha256:f7d6cbf8c2017a33d3d53ee77d9b8a421dbe150bd4157cf3c0cd29a10bf7204b, artifact acme/fixture#feat-status-claims@5f2a7c1db349e086a5c4f71b2e930d8641ac5b07"
+      }
+    },
+    {
+      "name": "command_outcome_blocker",
+      "scenario": {
+        "claimClass": "command_outcome",
+        "result": "could_not_run",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/suite-blocked",
+        "observedAt": "2026-09-22T12:09:40.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "npm test",
+          "exitCode": 127,
+          "resultDigest": "sha256:ef5fd1e1e7b054a81d303eeb24216f58edd6125cc5e1dc4a344374d02e2b81f2"
+        },
+        "metadata": {
+          "blockerClass": "toolchain-absent",
+          "exitSignal": null
+        },
+        "producedAt": "2026-09-22T12:09:41.000Z"
+      },
+      "evaluatedAt": "2026-09-22T12:10:00.000Z",
+      "expectedReceipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "command_outcome",
+        "result": "could_not_run",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/suite-blocked",
+        "observedAt": "2026-09-22T12:09:40.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "npm test",
+          "exitCode": 127,
+          "resultDigest": "sha256:ef5fd1e1e7b054a81d303eeb24216f58edd6125cc5e1dc4a344374d02e2b81f2"
+        },
+        "artifact": null,
+        "metadata": {
+          "blockerClass": "toolchain-absent",
+          "exitSignal": null
+        },
+        "idempotencyKey": "sha256:c9b7238e0381a0f938aeddf26009349eb04f6f94ff9a9b2acaf9c3428ac7874f",
+        "producedAt": "2026-09-22T12:09:41.000Z",
+        "digest": "sha256:e166a70cd3ba1ff809cbf6d8cf2cf1b2a31e843a8092cfbfb8d51a631bf22e7b"
+      },
+      "expectedBinding": {
+        "claimClass": "command_outcome",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/suite-blocked",
+        "idempotencyKey": "sha256:c9b7238e0381a0f938aeddf26009349eb04f6f94ff9a9b2acaf9c3428ac7874f",
+        "artifact": null
+      },
+      "expectedRendering": {
+        "disposition": "blocker",
+        "factual": true,
+        "reasons": [],
+        "statement": "command_outcome could_not_run on runtime harness-runtime/lane-a, observed 2026-09-22T12:09:40.000Z, evidence sha256:ef5fd1e1e7b054a81d303eeb24216f58edd6125cc5e1dc4a344374d02e2b81f2"
+      }
+    }
+  ],
+  "rejected": [
+    {
+      "name": "cross_runtime_evidence",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-b",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "observedAt": "2026-09-22T12:09:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 0,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "artifact": null,
+        "metadata": {
+          "endpointClass": "api",
+          "latencyMs": 142,
+          "statusCode": 200
+        },
+        "idempotencyKey": "sha256:5108076fe9716f17ea12fe3345c5cabefcb4c4ea83a1dd8017962c954c5e820e",
+        "producedAt": "2026-09-22T12:09:01.000Z",
+        "digest": "sha256:fa6a0b7f34120357d15ba81dbd0cd868f0750e12588aa345fc45b1bb0467e91c"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "artifact": null
+      },
+      "reasons": [
+        "cross-runtime-evidence",
+        "idempotency-key-mismatch"
+      ],
+      "at": "2026-09-22T12:10:00.000Z"
+    },
+    {
+      "name": "stale_observation",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable-stale",
+        "observedAt": "2026-09-22T10:00:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 0,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "artifact": null,
+        "metadata": {
+          "endpointClass": "api",
+          "latencyMs": 142,
+          "statusCode": 200
+        },
+        "idempotencyKey": "sha256:3432f0a43b34c0a590054b6f4db53bdb31eb4fae0600aedf21e4c4f260d79727",
+        "producedAt": "2026-09-22T12:09:01.000Z",
+        "digest": "sha256:7fa1f2a2be14459c9db8fc9d25bc385a7f18e5ef307ec91289e5e13af3bcf034"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable-stale",
+        "idempotencyKey": "sha256:3432f0a43b34c0a590054b6f4db53bdb31eb4fae0600aedf21e4c4f260d79727",
+        "artifact": null
+      },
+      "reasons": [
+        "stale-observation"
+      ],
+      "at": "2026-09-22T12:10:00.000Z"
+    },
+    {
+      "name": "future_observation",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable-future",
+        "observedAt": "2026-09-22T13:00:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 0,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "artifact": null,
+        "metadata": {
+          "endpointClass": "api",
+          "latencyMs": 142,
+          "statusCode": 200
+        },
+        "idempotencyKey": "sha256:e41f6fe5cec8806e567f5b51931b9527beee15ccec92c6becff8c2f48d9209c6",
+        "producedAt": "2026-09-22T12:09:01.000Z",
+        "digest": "sha256:cbcbc7fe0fc96a10c9f8bd9fc28d7497d2d55572aff9131cc0f467d34420f437"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable-future",
+        "idempotencyKey": "sha256:e41f6fe5cec8806e567f5b51931b9527beee15ccec92c6becff8c2f48d9209c6",
+        "artifact": null
+      },
+      "reasons": [
+        "stale-observation"
+      ],
+      "at": "2026-09-22T12:10:00.000Z"
+    },
+    {
+      "name": "contradictory_evidence",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable-contradictory",
+        "observedAt": "2026-09-22T12:09:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 28,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "artifact": null,
+        "metadata": {
+          "endpointClass": "api",
+          "latencyMs": 142,
+          "statusCode": 200
+        },
+        "idempotencyKey": "sha256:8561302e23ea7221e384edda6b99ce0cef091a1f6024b52ac64b6771d44a05c2",
+        "producedAt": "2026-09-22T12:09:01.000Z",
+        "digest": "sha256:b38686644e5c1e66cb5a2d098097ab0c7b044ca81452a5c941e125f7acd09be8"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable-contradictory",
+        "idempotencyKey": "sha256:8561302e23ea7221e384edda6b99ce0cef091a1f6024b52ac64b6771d44a05c2",
+        "artifact": null
+      },
+      "reasons": [
+        "contradictory-evidence"
+      ],
+      "at": "2026-09-22T12:10:00.000Z"
+    },
+    {
+      "name": "resealed_under_another_runtime",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-b",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "observedAt": "2026-09-22T12:09:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 0,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "artifact": null,
+        "metadata": {
+          "endpointClass": "api",
+          "latencyMs": 142,
+          "statusCode": 200
+        },
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "producedAt": "2026-09-22T12:09:01.000Z",
+        "digest": "sha256:2f6035b2753b34feea5c901668f5778fbb349cc0ef420e0f7c79a03d2e52888a"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "artifact": null
+      },
+      "reasons": [
+        "cross-runtime-evidence",
+        "idempotency-key-unbound"
+      ],
+      "at": "2026-09-22T12:10:00.000Z"
+    },
+    {
+      "name": "raw_output_field",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "observedAt": "2026-09-22T12:09:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 0,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "artifact": null,
+        "metadata": {
+          "endpointClass": "api",
+          "latencyMs": 142,
+          "statusCode": 200,
+          "stdout": "HTTP/2 200"
+        },
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "producedAt": "2026-09-22T12:09:01.000Z",
+        "digest": "sha256:00de9bd7668a2d2a7a2a42d5e63f40beeb0f20df3d860e44f0e822a3794c5788"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "artifact": null
+      },
+      "reasons": [
+        "prohibited-content"
+      ],
+      "at": "2026-09-22T12:10:00.000Z"
+    },
+    {
+      "name": "secret_bearing_url",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "observedAt": "2026-09-22T12:09:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 0,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "artifact": null,
+        "metadata": {
+          "endpointClass": "api",
+          "latencyMs": 142,
+          "statusCode": 200,
+          "endpoint": "https://api.example.test/x?access_token=abc123456789"
+        },
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "producedAt": "2026-09-22T12:09:01.000Z",
+        "digest": "sha256:b24fa31655255034e34e410677d83deee344fff0fe27761b00051edc8a144c61"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "artifact": null
+      },
+      "reasons": [
+        "prohibited-content"
+      ],
+      "at": "2026-09-22T12:10:00.000Z"
+    },
+    {
+      "name": "artifact_binding_dropped",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "artifact_publication",
+        "result": "published",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/branch-pushed",
+        "observedAt": "2026-09-22T12:09:30.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "git ls-remote --exit-code",
+          "exitCode": 0,
+          "resultDigest": "sha256:f7d6cbf8c2017a33d3d53ee77d9b8a421dbe150bd4157cf3c0cd29a10bf7204b"
+        },
+        "artifact": null,
+        "metadata": {
+          "objectsPushed": 7,
+          "refClass": "branch-head"
+        },
+        "idempotencyKey": "sha256:03fd05abad1e9e26f41fd1752de442c20edb732c5ab953756d838ef619ca8ef5",
+        "producedAt": "2026-09-22T12:09:31.000Z",
+        "digest": "sha256:81787997217d4e161a6e321ad49fa439f3c385193f57d95887a716d7a4954aeb"
+      },
+      "expectedBinding": {
+        "claimClass": "artifact_publication",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/branch-pushed",
+        "idempotencyKey": "sha256:03fd05abad1e9e26f41fd1752de442c20edb732c5ab953756d838ef619ca8ef5",
+        "artifact": {
+          "id": "acme/fixture#feat-status-claims",
+          "headSha": "5f2a7c1db349e086a5c4f71b2e930d8641ac5b07"
+        }
+      },
+      "reasons": [
+        "artifact-mismatch",
+        "malformed-artifact",
+        "malformed-receipt"
+      ],
+      "at": "2026-09-22T12:10:00.000Z"
+    },
+    {
+      "name": "missing_evaluation_time",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0",
+        "claimClass": "service_reachability",
+        "result": "reachable",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "observedAt": "2026-09-22T12:09:00.000Z",
+        "maxObservationAgeSeconds": 300,
+        "source": {
+          "command": "gh api rate_limit",
+          "exitCode": 0,
+          "resultDigest": "sha256:2c0d7db9e19a3a711aec7fea75f41aa649d1577118970019f3c22b5b22744ecf"
+        },
+        "artifact": null,
+        "metadata": {
+          "endpointClass": "api",
+          "latencyMs": 142,
+          "statusCode": 200
+        },
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "producedAt": "2026-09-22T12:09:01.000Z",
+        "digest": "sha256:106d85fee3b1932f952bf06d2fdd5fe3903a4f63d0d8508ba4c27adc7e36887a"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "artifact": null
+      },
+      "reasons": [
+        "evaluation-time-missing"
+      ]
+    },
+    {
+      "name": "malformed_receipt",
+      "receipt": {
+        "schema": "status_claim_receipt/v1",
+        "contractVersion": "1.0.0"
+      },
+      "expectedBinding": {
+        "claimClass": "service_reachability",
+        "runtimeId": "harness-runtime/lane-a",
+        "claimKey": "report-2026-09-22/github-reachable",
+        "idempotencyKey": "sha256:c411352bdf6e26bfa3087b3a6d2012894ef57b10508703d3be88e8d5e7656451",
+        "artifact": null
+      },
+      "reasons": [
+        "malformed-receipt"
+      ],
+      "at": "2026-09-22T12:10:00.000Z"
+    }
+  ]
+}
