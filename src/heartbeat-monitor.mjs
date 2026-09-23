@@ -6,9 +6,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 export function evaluateScheduler(snapshot, selfDeclarationKey = "heartbeat:cos:deterministic") {
+  // `heartbeat:cos` is the retired model-driven heartbeat.  Its final error
+  // record can remain queryable after `openclaw system heartbeat disable`, but
+  // it is no longer an active monitor and must not poison this replacement.
+  const retiredDeclarationKeys = new Set(["heartbeat:cos"]);
   const jobs = Array.isArray(snapshot?.jobs) ? snapshot.jobs : [];
   const unhealthy = jobs
-    .filter((job) => job?.enabled && job?.declarationKey !== selfDeclarationKey)
+    .filter((job) => job?.enabled && job?.declarationKey !== selfDeclarationKey && !retiredDeclarationKeys.has(job?.declarationKey))
     .filter((job) => job?.state?.lastRunStatus === "error" || Number(job?.state?.consecutiveErrors || 0) > 0)
     .map((job) => ({
       declarationKey: job.declarationKey || job.id,
@@ -19,7 +23,7 @@ export function evaluateScheduler(snapshot, selfDeclarationKey = "heartbeat:cos:
   return {
     schema: "deterministic_heartbeat_receipt/v1",
     status: unhealthy.length ? "attention" : "healthy",
-    checkedJobs: jobs.filter((job) => job?.enabled && job?.declarationKey !== selfDeclarationKey).length,
+    checkedJobs: jobs.filter((job) => job?.enabled && job?.declarationKey !== selfDeclarationKey && !retiredDeclarationKeys.has(job?.declarationKey)).length,
     unhealthy,
   };
 }

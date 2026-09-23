@@ -10,6 +10,13 @@ const clean = evaluateScheduler({ jobs: [
 ] });
 assert.equal(clean.status, "healthy", "the monitor never self-amplifies a prior failure");
 
+const retired = evaluateScheduler({ jobs: [
+  { declarationKey: "heartbeat:cos", name: "heartbeat-cos", enabled: true, state: { lastRunStatus: "error", lastError: "interrupted", consecutiveErrors: 5 } },
+  { declarationKey: "healthy", enabled: true, state: { lastRunStatus: "ok" } },
+] });
+assert.equal(retired.status, "healthy", "the retired model-driven heartbeat is ignored after replacement");
+assert.equal(retired.checkedJobs, 1);
+
 const failed = evaluateScheduler({ jobs: [{ declarationKey: "release", name: "Release gate", enabled: true, state: { lastRunStatus: "error", lastError: "timeout", consecutiveErrors: 2 } }] });
 assert.equal(failed.status, "attention");
 assert.deepEqual(failed.unhealthy[0], { declarationKey: "release", name: "Release gate", error: "timeout", consecutiveErrors: 2 });
