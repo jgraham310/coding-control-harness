@@ -5,7 +5,7 @@ import { acquireStateLock } from "./state-lock.mjs";
 
 const SCHEMA_VERSION = 1;
 const CLAIM_TIMEOUT_MS = 90_000;
-function locked(statePath, fn) { const release = acquireStateLock(statePath); try { return fn(); } finally { release(); } }
+function locked(statePath, fn) { fs.mkdirSync(path.dirname(statePath), { recursive: true }); const release = acquireStateLock(statePath); try { return fn(); } finally { release(); } }
 
 function emptyState() {
   return { schemaVersion: SCHEMA_VERSION, records: [] };

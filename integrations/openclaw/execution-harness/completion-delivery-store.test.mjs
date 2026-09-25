@@ -5,6 +5,9 @@ import path from "node:path";
 import { recordCompletion, claimPendingDelivery, acknowledgeCompletionDelivery, recordTelegramFailure } from "./completion-delivery-store.mjs";
 
 const statePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "completion-delivery-lock-")), "state.json");
+const freshPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "completion-delivery-fresh-")), "nested", "state.json");
+assert.equal(recordCompletion({ statePath: freshPath, runId: "fresh", content: "First delivery" }).id, "fresh");
+assert.equal(fs.existsSync(freshPath), true);
 recordCompletion({ statePath, runId: "one", content: "Verified completion" });
 fs.mkdirSync(`${statePath}.lockdir`);
 fs.writeFileSync(path.join(`${statePath}.lockdir`, "owner.json"), JSON.stringify({ pid: process.pid, token: "held" }));
