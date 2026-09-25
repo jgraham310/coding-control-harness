@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const taskDir = "/Users/jasongraham/.openclaw/state/long-tasks/tasks/task-completion-control-20260920";
+const taskDir = process.env.TASK_COMPLETION_DIR ?? "/Users/jasongraham/.openclaw/state/long-tasks/tasks/task-completion-control-20260920";
 const gatesPath = path.join(taskDir, "GATES.md");
 const statePath = path.join(taskDir, "completion-notification.json");
 const target = "7c7da792-adaf-4f0f-9e2d-f15302a31482";
@@ -32,8 +32,8 @@ if (current.state === "sent") {
   console.log(JSON.stringify({ state: "sent", receipt: current.receipt }));
   process.exit(0);
 }
-if (current.state === "send_started") {
-  console.log(JSON.stringify({ state: "uncertain", reason: "prior send began without a stored transport receipt; refusing duplicate notification" }));
+if (current.state === "send_started" || current.state === "uncertain") {
+  console.log(JSON.stringify({ state: "uncertain", reason: "prior send may have reached Signal without a stored transport receipt; refusing duplicate notification" }));
   process.exit(2);
 }
 
