@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { validateRuntime, workStateContext } from "./work-state.mjs";
 
-const runtime = JSON.parse(fs.readFileSync(new URL("./work-state.json", import.meta.url), "utf8"));
+const canonicalRuntime = "/Users/jasongraham/.openclaw/workspace-cos/ops/execution-harness/work-state.json";
+const runtime = JSON.parse(fs.readFileSync(canonicalRuntime, "utf8"));
 validateRuntime(runtime);
 
 for (const [agentId, workStateId] of [["civicline-cto", "cto:civicline"], ["tems-cto", "cto:tems"]]) {
@@ -13,7 +14,6 @@ for (const [agentId, workStateId] of [["civicline-cto", "cto:civicline"], ["tems
   assert.equal(charter.schemaVersion, 2);
   assert.equal(charter.durableExecution.required, true);
   assert.equal(charter.durableExecution.workStateId, workStateId);
-  const canonicalRuntime = "/Users/jasongraham/.openclaw/workspace-cos/ops/execution-harness/work-state.json";
   const expectedRuntime = agentId === "tems-cto"
     ? "/Users/jasongraham/.openclaw/workspace-tems-cto/.runtime/work-state.json"
     : canonicalRuntime;
