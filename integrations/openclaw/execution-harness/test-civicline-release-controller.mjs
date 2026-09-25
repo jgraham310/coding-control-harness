@@ -39,6 +39,12 @@ try {
   const mismatch = JSON.parse(execFileSync("node", [controller], { encoding: "utf8", env: { ...process.env, CIVICLINE_RELEASE_ROOT: root, PATH: `${bin}:${process.env.PATH}` } }));
   assert.equal(mismatch.outcome, "held");
   assert.equal(mismatch.reasons.includes("staging revision image does not match the candidate digest"), true);
+  fs.writeFileSync(path.join(bin, "az"), `#!/bin/sh\nprintf '%s\\n' '{"state":"Running","health":"Healthy","image":"example.test/clerk-suite@${manifest.artifact.digest}"}'\n`);
+  execFileSync("node", [controller, "--promote"], { encoding: "utf8", env: { ...process.env, CIVICLINE_RELEASE_ROOT: root, PATH: `${bin}:${process.env.PATH}` } });
+  const repeated = JSON.parse(execFileSync("node", [controller, "--promote"], { encoding: "utf8", env: { ...process.env, CIVICLINE_RELEASE_ROOT: root, PATH: `${bin}:${process.env.PATH}` } }));
+  assert.equal(repeated.outcome, "held");
+  assert.equal(repeated.reasons.includes("promotion already claimed for this immutable manifest"), true);
+  assert.equal(repeated.productionMutation, false);
   console.log("civicline release controller immutable-candidate test: passed");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

@@ -240,13 +240,18 @@ assert.equal(JSON.parse(fs.readFileSync(closedState, "utf8")).lanes[0].phase, "b
 const lockState = path.join(temp, "locked.json");
 fs.writeFileSync(lockState, `${JSON.stringify(fixture, null, 2)}\n`);
 fs.mkdirSync(`${lockState}.lockdir`);
-fs.writeFileSync(path.join(`${lockState}.lockdir`, "pid"), String(process.pid));
-assert.throws(() => JSON.parse(execFileSync("node", [harness, "status", "--state", lockState], { encoding: "utf8" })), /Execution state is busy/);
+fs.writeFileSync(path.join(`${lockState}.lockdir`, "owner.json"), JSON.stringify({ pid: process.pid, token: "held" }));
+assert.throws(() => JSON.parse(execFileSync("node", [harness, "status", "--state", lockState], { encoding: "utf8" })), /State is busy/);
 fs.rmSync(`${lockState}.lockdir`, { recursive: true });
 fs.mkdirSync(`${lockState}.lockdir`);
-fs.writeFileSync(path.join(`${lockState}.lockdir`, "pid"), "99999999");
+fs.writeFileSync(path.join(`${lockState}.lockdir`, "owner.json"), JSON.stringify({ pid: 99999999, token: "stale" }));
 assert.equal(JSON.parse(execFileSync("node", [harness, "status", "--state", lockState], { encoding: "utf8" })).lanes.length, 1);
 assert.equal(fs.existsSync(`${lockState}.lockdir`), false);
+fs.mkdirSync(`${lockState}.work-state.json.lockdir`);
+fs.writeFileSync(path.join(`${lockState}.work-state.json.lockdir`, "owner.json"), JSON.stringify({ pid: process.pid, token: "held" }));
+assert.throws(() => JSON.parse(execFileSync("node", [harness, "migrate-workstates", "--state", lockState], { encoding: "utf8" })), /State is busy/);
+assert.equal(JSON.parse(fs.readFileSync(lockState, "utf8")).lanes[0].workStateId, undefined);
+fs.rmSync(`${lockState}.work-state.json.lockdir`, { recursive: true });
 
 const staleState = path.join(temp, "stale-workstate.json");
 const staleFixture = JSON.parse(fs.readFileSync(state, "utf8"));

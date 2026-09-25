@@ -121,13 +121,29 @@ function main() {
   else { try { const value = JSON.parse(revision.stdout); if (value.health !== "Healthy" || !String(value.state).includes("Running")) reasons.push("staging revision is not healthy and running"); if (!digest || !String(value.image ?? "").endsWith(`@${digest}`)) reasons.push("staging revision image does not match the candidate digest"); } catch { reasons.push("staging revision returned invalid JSON"); } }
   if (!smoke.ok || smoke.stdout !== "200") reasons.push("staging smoke did not return HTTP 200");
   if (!requiredPassed(manifest)) reasons.push("manifest has not recorded every required staging and independent-review gate as passed");
+  let promotionClaim = null;
+  if (!reasons.length && mutate) {
+    const claims = path.join(RECORDS, "claims");
+    fs.mkdirSync(claims, { recursive: true });
+    const claimPath = path.join(claims, `${path.basename(file)}.claim`);
+    try {
+      const descriptor = fs.openSync(claimPath, "wx", 0o600);
+      try { fs.writeFileSync(descriptor, `${JSON.stringify({ manifest: path.basename(file), digest, claimedAt: at, pid: process.pid })}\n`); }
+      finally { fs.closeSync(descriptor); }
+      promotionClaim = claimPath;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      reasons.push("promotion already claimed for this immutable manifest");
+    }
+  }
   const record = {
     schemaVersion: 1, at, controller: "civicline-release-controller/v1", manifest: path.basename(file),
     sourceCommit: source ?? null, artifactDigest: digest ?? null, rollbackAnchor: rollbackAnchor ?? null,
     checks: { stagingRevision: revision, stagingSmoke: smoke },
     outcome: reasons.length ? "held" : (mutate ? "promotion-pending" : "ready-for-promotion"),
     reasons,
-    productionMutation: false
+    productionMutation: false,
+    promotionClaim
   };
   if (!reasons.length && mutate) {
     try { record.promotion = promote(manifest, record); record.outcome = "promoted-awaiting-60-minute-observation"; record.productionMutation = true; }

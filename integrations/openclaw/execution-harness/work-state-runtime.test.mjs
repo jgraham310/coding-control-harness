@@ -22,6 +22,14 @@ const receipt = { id: "intake", source: "test", artifact: "sha256:intake", statu
 assert.equal(run("record-evidence", ["--receipt", JSON.stringify(receipt)]).created, true);
 const record = { id: "lane-1", objective: "Repair a bounded failure.", acceptanceTests: ["stale transitions fail", "duplicate action does not replay"], authorityBoundary: { allowedActions: ["inspect", "retry_safe"] }, phase: "identified", nextAction: "Inspect the evidence.", owner: "controller", evidenceRefs: ["intake"], dependencies: [], blockers: [], facts: [], decisions: [], retryPolicy: { maxAttempts: 2 }, deadline: "2026-09-20T12:00:00.000Z" };
 assert.equal(run("register", ["--record", JSON.stringify(record)]).record.version, 1);
+fs.mkdirSync(`${state}.lockdir`);
+fs.writeFileSync(path.join(`${state}.lockdir`, "owner.json"), JSON.stringify({ pid: process.pid, token: "held" }));
+expectFailure("record-evidence", ["--receipt", JSON.stringify({ ...receipt, id: "blocked" })], /State is busy/);
+fs.rmSync(`${state}.lockdir`, { recursive: true });
+fs.mkdirSync(`${state}.lockdir`);
+fs.writeFileSync(path.join(`${state}.lockdir`, "owner.json"), JSON.stringify({ pid: 99999999, token: "dead" }));
+assert.equal(run("record-evidence", ["--receipt", JSON.stringify({ ...receipt, id: "after-death" })]).created, true);
+assert.equal(fs.existsSync(`${state}.lockdir`), false);
 const action = { id: "inspect", idempotencyKey: "lane-1:inspect", class: "inspect", description: "Inspect failure." };
 const transition = run("transition", ["--id", "lane-1", "--expected-version", "1", "--patch", JSON.stringify({ phase: "active", nextAction: "Inspect exact logs.", evidenceRefs: ["intake"] }), "--action", JSON.stringify(action), "--rationale", "The intake receipt requires exact inspection."]);
 assert.equal(transition.record.version, 2);

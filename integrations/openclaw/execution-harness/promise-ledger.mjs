@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { acquireStateLock } from "./state-lock.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultState = process.env.PROMISE_LEDGER_STATE || path.join(here, "promise-ledger.json");
@@ -80,6 +81,7 @@ function ids(value) { return value.split(",").map((item) => item.trim()).filter(
 
 const command = process.argv[2];
 const stateFile = arg("--state", defaultState);
+acquireStateLock(stateFile);
 const state = validate(read(stateFile));
 
 if (command === "register") {

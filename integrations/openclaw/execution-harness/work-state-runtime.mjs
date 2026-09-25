@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { completeAction, emptyRuntime, recordEvidence, registerWorkState, transitionWorkState, validateRuntime, workStateContext } from "./work-state.mjs";
+import { acquireStateLock } from "./state-lock.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 function arg(name, fallback = null) { const index = process.argv.indexOf(name); return index === -1 ? fallback : process.argv[index + 1] ?? fail(`Missing ${name}.`); }
@@ -14,10 +15,7 @@ function load(file) { return fs.existsSync(file) ? JSON.parse(fs.readFileSync(fi
 function save(file, value) { const temp = `${file}.${process.pid}.tmp`; fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`); fs.renameSync(temp, file); }
 function print(value) { process.stdout.write(`${JSON.stringify(value, null, 2)}\n`); }
 function locked(file, fn) {
-  const lock = `${file}.lock`;
-  let descriptor;
-  try { descriptor = fs.openSync(lock, "wx"); }
-  catch { fail(`WorkState runtime is busy: ${lock}`); }
+  const releaseLock = acquireStateLock(file);
   try {
     const runtime = load(file);
     validateRuntime(runtime);
@@ -25,8 +23,7 @@ function locked(file, fn) {
     save(file, runtime);
     return result;
   } finally {
-    if (descriptor !== undefined) fs.closeSync(descriptor);
-    try { fs.unlinkSync(lock); } catch {}
+    releaseLock();
   }
 }
 

@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { handoffRecord } from "./deterministic-engine.mjs";
 import { emptyRuntime, registerWorkState, validateRuntime, workStateContext } from "./work-state.mjs";
+import { acquireStateLock } from "./state-lock.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultState = process.env.EXECUTION_HARNESS_STATE || path.join(here, "execution-state.json");
@@ -222,6 +223,8 @@ function durableWorkStateContext(item) {
 }
 function ensureWorkState(item, at) {
   const file = workStatePath();
+  const releaseLock = acquireStateLock(file);
+  try {
   let runtime;
   try { runtime = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : emptyRuntime(); validateRuntime(runtime); }
   catch (error) { fail(`Unable to initialize WorkState for ${item.id}: ${error.message}`); }
@@ -245,6 +248,7 @@ function ensureWorkState(item, at) {
   }
   item.workStateId = id;
   return id;
+  } finally { releaseLock(); }
 }
 function recoveryCommand(item) {
   const durable = item.workStateId ? durableWorkStateContext(item) : null;
@@ -475,23 +479,7 @@ function manifestCandidate(item, manifest) {
 
 const command = process.argv[2];
 const stateFile = arg("--state", defaultState);
-const lockDir = `${stateFile}.lockdir`;
-function acquireStateLock() {
-  try { fs.mkdirSync(lockDir); }
-  catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    let owner;
-    try { owner = Number(fs.readFileSync(path.join(lockDir, "pid"), "utf8")); } catch { fail(`Execution state is busy: ${stateFile}`); }
-    if (!Number.isInteger(owner) || owner < 1) fail(`Execution state has an invalid lock owner: ${stateFile}`);
-    try { process.kill(owner, 0); fail(`Execution state is busy: ${stateFile}`); }
-    catch (signalError) { if (signalError.code !== "ESRCH") throw signalError; }
-    fs.rmSync(lockDir, { recursive: true, force: true });
-    fs.mkdirSync(lockDir);
-  }
-  fs.writeFileSync(path.join(lockDir, "pid"), String(process.pid));
-  process.on("exit", () => { try { fs.rmSync(lockDir, { recursive: true, force: true }); } catch {} });
-}
-acquireStateLock();
+acquireStateLock(stateFile);
 const state = validate(normalize(load(stateFile)));
 
 if (command === "status") {
