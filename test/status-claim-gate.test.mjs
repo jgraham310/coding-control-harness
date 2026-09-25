@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { admitStatusClaim, gateStatusClaim } from "../src/status-claim-gate.mjs";
+const store = new Map(); const now = 1_000;
+assert.deepEqual(gateStatusClaim("CI is green.", { store, now }), { content: "CI is green." });
+assert.equal(gateStatusClaim("[[status-claim:0123456789abcdef0123456789abcdef]]", { store, now }).cancel, true);
+const admitted = admitStatusClaim({ content: "GitHub transport verified.", verified: true, now, token: "a".repeat(32) }, store);
+assert.deepEqual(gateStatusClaim(admitted.marker, { store, now: now + 1 }), { content: "GitHub transport verified." });
+assert.equal(gateStatusClaim(admitted.marker, { store, now: now + 300_001 }).cancel, true);
+const unverified = admitStatusClaim({ content: "must not deliver", verified: false, now, token: "b".repeat(32) }, store);
+assert.equal(gateStatusClaim(unverified.marker, { store, now }).cancel, true);
+console.log("status-claim gate: passed");
