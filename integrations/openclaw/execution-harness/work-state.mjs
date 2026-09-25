@@ -152,6 +152,7 @@ export function transitionWorkState(runtime, id, expectedVersion, patch, action,
   requiredString(rationale, "State transition rationale");
   const duplicate = Object.values(runtime.actions).find((item) => item.workStateId === id && item.idempotencyKey === action.idempotencyKey);
   if (duplicate) return { record: clone(record), action: clone(duplicate), created: false };
+  if (runtime.actions[action.id]) fail(`Action ID ${action.id} is already in use.`);
   if (record.version !== expectedVersion) fail(`Stale WorkState version for ${id}: expected ${expectedVersion}, current ${record.version}.`);
   validatePatch(record, patch, runtime);
   const next = { ...record, ...clone(patch), version: record.version + 1, updatedAt: at };

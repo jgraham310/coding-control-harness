@@ -117,6 +117,7 @@ assert.equal(successorWatch.findings.some((finding) => finding.kind === "develop
 let adapterState = run("status");
 const successor = adapterState.lanes.find((item) => item.id === "test-successor");
 assert.equal(successor.dispatch.status, "ready");
+assert.deepEqual(successor.verifications.filter((gate) => prePrGates.includes(gate.name)).map((gate) => gate.required), [true, true, true]);
 assert.equal(successor.gatesFile, "GATES.md");
 assert.equal(successor.executionContract.validation[0], "node --test");
 assert.equal(successor.dispatch.command.includes("Do not weaken, skip, or narrow tests"), true);
@@ -139,6 +140,11 @@ fs.writeFileSync(state, `${JSON.stringify(enforcementFixture, null, 2)}\n`);
 assert.throws(() => run("transition", "--lane", "test-contract-enforcement", "--to", "pr-open", "--evidence", "ordinary gates passed", "--at", "2026-08-15T13:07:40-04:00"), /execution-contract validation is incomplete/);
 run("record-contract-check", "--lane", "test-contract-enforcement", "--validation", "node --test", "--status", "passed", "--evidence", "contract suite passed", "--artifact", "git:contract", "--at", "2026-08-15T13:07:41-04:00");
 assert.equal(run("transition", "--lane", "test-contract-enforcement", "--to", "pr-open", "--evidence", "all contract and ordinary gates passed", "--at", "2026-08-15T13:07:42-04:00").lane.phase, "pr-open");
+const missingPrePr = JSON.parse(fs.readFileSync(state, "utf8"));
+const enforcement = missingPrePr.lanes.find((item) => item.id === "test-contract-enforcement");
+missingPrePr.lanes.push({ ...enforcement, id: "test-missing-prepr", issue: 9005, phase: "tests-running", verifications: enforcement.verifications.map((gate) => gate.name === "targeted_tests" ? { ...gate, status: "skipped" } : gate) });
+fs.writeFileSync(state, `${JSON.stringify(missingPrePr, null, 2)}\n`);
+assert.throws(() => run("transition", "--lane", "test-missing-prepr", "--to", "pr-open", "--evidence", "attempted without targeted tests", "--at", "2026-08-15T13:07:43-04:00"), /required verification gates not passed: targeted_tests/);
 assert.equal(adapterState.lanes[0].active, false);
 
 const remediationFixture = JSON.parse(fs.readFileSync(state, "utf8"));
@@ -211,3 +217,15 @@ try {
 }
 console.log("tmux reaper tests: passed");
 console.log("execution-harness tests: passed");
+
+// A closed issue without merge evidence cannot produce a merged lane or dispatch.
+const closedState = path.join(temp, "closed-issue.json");
+fs.writeFileSync(closedState, `${JSON.stringify(fixture, null, 2)}\n`);
+const fakeBin = path.join(temp, "fake-bin");
+fs.mkdirSync(fakeBin);
+const fakeGh = path.join(fakeBin, "gh");
+fs.writeFileSync(fakeGh, "#!/bin/sh\nprintf '%s\\n' '{\"state\":\"CLOSED\",\"closedAt\":\"2026-08-15T13:00:00Z\"}'\n");
+fs.chmodSync(fakeGh, 0o755);
+const closed = JSON.parse(execFileSync("node", [harness, "watch", "--apply", "--state", closedState, "--skip-staging", "--skip-tmux", "--at", "2026-08-15T13:05:00-04:00"], { env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` }, encoding: "utf8" }));
+assert.equal(closed.findings.some((finding) => finding.kind === "github_issue_closed_unverified"), true);
+assert.equal(JSON.parse(fs.readFileSync(closedState, "utf8")).lanes[0].phase, "blocked");

@@ -118,7 +118,7 @@ function main() {
   const reasons = [];
   if (!source || !digest || !rollbackAnchor) reasons.push("manifest is missing immutable source, artifact digest, or rollback anchor");
   if (!revision.ok) reasons.push("staging revision could not be verified");
-  else { try { const value = JSON.parse(revision.stdout); if (value.health !== "Healthy" || !String(value.state).includes("Running")) reasons.push("staging revision is not healthy and running"); } catch { reasons.push("staging revision returned invalid JSON"); } }
+  else { try { const value = JSON.parse(revision.stdout); if (value.health !== "Healthy" || !String(value.state).includes("Running")) reasons.push("staging revision is not healthy and running"); if (!digest || !String(value.image ?? "").endsWith(`@${digest}`)) reasons.push("staging revision image does not match the candidate digest"); } catch { reasons.push("staging revision returned invalid JSON"); } }
   if (!smoke.ok || smoke.stdout !== "200") reasons.push("staging smoke did not return HTTP 200");
   if (!requiredPassed(manifest)) reasons.push("manifest has not recorded every required staging and independent-review gate as passed");
   const record = {

@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-export const needsExactHeadReview = ({ head, reviews, comments = [], requestedHead }) => {
+export const needsExactHeadReview = ({ head, reviews, comments = [], requestedHead, requestedAt, now = Date.now() }) => {
   const codexReviews = (reviews || []).filter((review) => /codex/i.test(String(review.user?.login || "")));
   if (codexReviews.some((review) => review.commit_id === head)) return false;
   // A manually requested review has not created a PullRequestReview yet.  The
@@ -14,7 +14,9 @@ export const needsExactHeadReview = ({ head, reviews, comments = [], requestedHe
   // reviewed SHA; recognize it instead of posting a second request.
   if ((comments || []).some((comment) => /codex-pull-request-review-summary/.test(String(comment.body || ""))
       && String(comment.body || "").includes(head.slice(0, 7)) && /running/i.test(String(comment.body || "")))) return false;
-  return requestedHead !== head;
+  // A request without a completed review or live in-flight marker expires;
+  // never convert it into a false reviewedHead receipt.
+  return requestedHead !== head || !requestedAt || now - Date.parse(requestedAt) >= 15 * 60 * 1000;
 };
 
 const gh = (args) => JSON.parse(execFileSync("gh", args, { encoding: "utf8" }));
@@ -38,9 +40,10 @@ export function reconcile({ repo, number, state, client = gh, requestReview = nu
   const comments = client(["api", `repos/${repo}/issues/${number}/comments`]);
   const key = `${repo}#${number}`;
   const prior = state.pullRequests[key] || {};
-  if (!needsExactHeadReview({ head: pr.headRefOid, reviews, comments, requestedHead: prior.requestedHead })) {
-    state.pullRequests[key] = { ...prior, observedHead: pr.headRefOid, reviewedHead: pr.headRefOid, observedAt: new Date().toISOString() };
-    return { action: "already-reviewed", head: pr.headRefOid };
+  if (!needsExactHeadReview({ head: pr.headRefOid, reviews, comments, requestedHead: prior.requestedHead, requestedAt: prior.requestedAt })) {
+    const reviewed = reviews.some((review) => /codex/i.test(String(review.user?.login || "")) && review.commit_id === pr.headRefOid);
+    state.pullRequests[key] = { ...prior, observedHead: pr.headRefOid, ...(reviewed ? { reviewedHead: pr.headRefOid } : {}), observedAt: new Date().toISOString() };
+    return { action: reviewed ? "already-reviewed" : "review-pending", head: pr.headRefOid };
   }
   const submit = requestReview || (() => execFileSync("gh", ["pr", "comment", String(number), "--repo", repo, "--body", "@codex review"], { encoding: "utf8" }));
   submit();

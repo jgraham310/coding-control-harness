@@ -19,7 +19,7 @@ const manifest = {
   required: { stagingHealth: "passed", stagingSmoke: "passed", stagingUat: "passed: exact artifact", independentReview: "passed" }
 };
 fs.writeFileSync(path.join(root, "release-trains", "candidate.json"), `${JSON.stringify(manifest)}\n`);
-fs.writeFileSync(path.join(bin, "az"), "#!/bin/sh\nprintf '%s\\n' '{\"state\":\"Running\",\"health\":\"Healthy\"}'\n");
+fs.writeFileSync(path.join(bin, "az"), `#!/bin/sh\nprintf '%s\\n' '{"state":"Running","health":"Healthy","image":"example.test/clerk-suite@${manifest.artifact.digest}"}'\n`);
 fs.writeFileSync(path.join(bin, "curl"), "#!/bin/sh\nprintf '200'\n");
 // If the controller still reads main, this stub leaves evidence and fails.
 fs.writeFileSync(path.join(bin, "gh"), `#!/bin/sh\ntouch '${path.join(root, "gh-was-called")}'\nexit 1\n`);
@@ -35,6 +35,10 @@ try {
   assert.equal(result.outcome, "ready-for-promotion");
   assert.deepEqual(result.reasons, []);
   assert.equal(fs.existsSync(path.join(root, "gh-was-called")), false);
+  fs.writeFileSync(path.join(bin, "az"), "#!/bin/sh\nprintf '%s\\n' '{\"state\":\"Running\",\"health\":\"Healthy\",\"image\":\"example.test/clerk-suite@sha256:wrong\"}'\n");
+  const mismatch = JSON.parse(execFileSync("node", [controller], { encoding: "utf8", env: { ...process.env, CIVICLINE_RELEASE_ROOT: root, PATH: `${bin}:${process.env.PATH}` } }));
+  assert.equal(mismatch.outcome, "held");
+  assert.equal(mismatch.reasons.includes("staging revision image does not match the candidate digest"), true);
   console.log("civicline release controller immutable-candidate test: passed");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

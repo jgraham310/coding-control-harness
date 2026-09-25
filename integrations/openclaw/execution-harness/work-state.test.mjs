@@ -17,6 +17,8 @@ assert.equal(prepared.created, true);
 assert.equal(prepared.record.version, 2);
 assert.throws(() => transitionWorkState(runtime, "closure-ci-1", 1, { phase: "waiting" }, { id: "stale", idempotencyKey: "stale", class: "inspect", description: "Stale action." }, "stale", at), /Stale WorkState version/);
 assert.equal(transitionWorkState(runtime, "closure-ci-1", 2, { phase: "waiting" }, { id: "inspect-duplicate", idempotencyKey: "closure-ci-1:inspect:1", class: "inspect", description: "Duplicate action." }, "retry", at).created, false);
+assert.throws(() => transitionWorkState(runtime, "closure-ci-1", 2, { phase: "waiting" }, { id: "inspect-1", idempotencyKey: "different-key", class: "inspect", description: "Collision." }, "collision", at), /already in use/);
+assert.equal(runtime.actions["inspect-1"].idempotencyKey, "closure-ci-1:inspect:1");
 recordEvidence(runtime, { id: "evidence-inspection", source: "test", artifact: "sha256:inspection", status: "passed", excerpts: ["focused test passed"], facts: ["no repair needed"] }, at);
 assert.equal(completeAction(runtime, "inspect-1", "succeeded", "evidence-inspection", at).status, "succeeded");
 assert.equal(completeAction(runtime, "inspect-1", "succeeded", "evidence-inspection", at).status, "succeeded");

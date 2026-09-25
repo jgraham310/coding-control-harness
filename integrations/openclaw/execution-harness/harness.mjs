@@ -155,7 +155,7 @@ function developmentDispatch(state, source, kind, at, evidence) {
     // A dispatched development packet is a product issue. Its UAT gate is
     // mandatory from creation; the issue-derived contract determines how it is
     // executed, not whether it can be waived.
-    verifications: verificationNames.map((name) => ({ name, required: name === "staging_uat", status: "skipped", updatedAt: at, command: null, evidence: "Not applicable until an implementation packet is selected.", artifact: null, dueAt: null, journey: null })),
+    verifications: verificationNames.map((name) => ({ name, required: name === "staging_uat" || prePrGates.includes(name), status: "skipped", updatedAt: at, command: null, evidence: "Not applicable until an implementation packet is selected.", artifact: null, dueAt: null, journey: null })),
     review: { status: "unreviewed", head: null, evidence: null, dueAt: null, updatedAt: null }
   };
   ensureWorkState(packet, at);
@@ -773,16 +773,15 @@ if (command === "status") {
       const evidence = `github_reconciliation_failed:#${item.issue}: ${remote.error.slice(0, 300)}`;
       findings.push({ issue: item.issue, phase: item.phase, kind: "github_reconciliation_failed", evidence, nextAction: item.nextAction });
       if (process.argv.includes("--apply")) event(state, { at, laneId: item.id, kind: "github_reconciliation_failed", evidence });
-    } else if (remote?.state === "CLOSED" && item.phase !== "merged" && item.phase !== "staged" && item.phase !== "production-verified") {
-      const evidence = `GitHub issue #${item.issue} is closed${remote.closedAt ? ` at ${remote.closedAt}` : ""}; reconcile its merged delivery state before any release decision.`;
-      findings.push({ issue: item.issue, phase: item.phase, kind: "github_issue_closed", evidence, nextAction: "Record the merge commit, CI/review evidence, and the next authorized release-gate action." });
+    } else if (remote?.state === "CLOSED" && !["merged", "staged", "production-verified", "completed", "archived"].includes(item.phase) && !String(item.blocker ?? "").startsWith("GitHub issue #")) {
+      const evidence = `GitHub issue #${item.issue} is closed${remote.closedAt ? ` at ${remote.closedAt}` : ""}; closure alone is not merge evidence.`;
+      findings.push({ issue: item.issue, phase: item.phase, kind: "github_issue_closed_unverified", evidence, nextAction: "Verify the linked merged PR and exact merge commit before transitioning this lane to merged." });
       if (process.argv.includes("--apply")) {
-        item.phase = "merged";
-        item.blocker = null;
-        item.heartbeatDueAt = null;
+        item.phase = "blocked";
+        item.blocker = evidence;
         item.lastEvidence = { at, detail: evidence };
-        item.nextAction = "Record the merge commit, CI/review evidence, and the next authorized release-gate action.";
-        event(state, { at, laneId: item.id, kind: "github_issue_closed", evidence });
+        item.nextAction = "Verify the linked merged PR and exact merge commit before transitioning this lane to merged.";
+        event(state, { at, laneId: item.id, kind: "github_issue_closed_unverified", evidence });
       }
       continue;
     }
