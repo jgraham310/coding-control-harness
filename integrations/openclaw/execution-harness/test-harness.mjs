@@ -119,6 +119,7 @@ let adapterState = run("status");
 const successor = adapterState.lanes.find((item) => item.id === "test-successor");
 assert.equal(successor.dispatch.status, "ready");
 assert.deepEqual(successor.verifications.filter((gate) => prePrGates.includes(gate.name)).map((gate) => gate.required), [true, true, true]);
+assert.equal(successor.verifications.every((gate) => gate.required), true, "generated packets retain every pre-production gate");
 assert.equal(successor.gatesFile, "GATES.md");
 assert.equal(successor.executionContract.validation[0], "node --test");
 assert.equal(successor.dispatch.command.includes("Do not weaken, skip, or narrow tests"), true);
@@ -267,3 +268,29 @@ assert.equal(staleWatch.findings.some((finding) => finding.kind === "development
 const staleSaved = JSON.parse(fs.readFileSync(staleState, "utf8"));
 assert.equal(staleSaved.lanes.find((item) => item.id === "test-successor").dispatch.status, "invalidated");
 assert.equal(staleSaved.events.some((entry) => entry.kind === "development_recovery_failed" && entry.evidence.includes("WorkState is stale")), true);
+
+const terminalState = path.join(temp, "terminal.json");
+const terminal = structuredClone(fixture);
+terminal.lanes[0].phase = "production-verified";
+terminal.lanes[0].active = true;
+fs.writeFileSync(terminalState, `${JSON.stringify(terminal, null, 2)}\n`);
+JSON.parse(execFileSync("node", [harness, "transition", "--issue", "2540", "--to", "completed", "--evidence", "synthetic production verification complete", "--state", terminalState], { encoding: "utf8" }));
+const completed = JSON.parse(execFileSync("node", [harness, "status", "--state", terminalState], { encoding: "utf8" }));
+assert.equal(completed.lanes[0].active, false);
+
+const reviewedState = path.join(temp, "reviewed.json");
+const reviewed = structuredClone(fixture);
+reviewed.lanes[0].phase = "ci-green";
+fs.writeFileSync(reviewedState, `${JSON.stringify(reviewed, null, 2)}\n`);
+assert.throws(() => execFileSync("node", [harness, "transition", "--issue", "2540", "--to", "reviewed", "--head", headArtifact, "--evidence", "unverified claim", "--state", reviewedState], { encoding: "utf8" }), /clear exact-head review receipt/);
+reviewed.lanes[0].review = { status: "clear", head: headArtifact, evidence: "zero actionable findings", dueAt: null, updatedAt: "2026-08-15T13:00:00Z" };
+fs.writeFileSync(reviewedState, `${JSON.stringify(reviewed, null, 2)}\n`);
+assert.equal(JSON.parse(execFileSync("node", [harness, "transition", "--issue", "2540", "--to", "reviewed", "--head", headArtifact, "--evidence", "exact review clear", "--state", reviewedState], { encoding: "utf8" })).lane.phase, "reviewed");
+
+const mergedState = path.join(temp, "merged-executor.json");
+const merged = structuredClone(fixture);
+merged.lanes[0].phase = "merged";
+merged.lanes[0].dispatch = { status: "attached", session: "missing-merged-executor", pane: "missing-merged-executor:0.0", worktree: temp, command: "sleep 1", autoRecover: true };
+fs.writeFileSync(mergedState, `${JSON.stringify(merged, null, 2)}\n`);
+execFileSync("node", [harness, "watch", "--apply", "--auto-recover", "--state", mergedState, "--skip-github", "--skip-staging"], { encoding: "utf8" });
+assert.equal(JSON.parse(fs.readFileSync(mergedState, "utf8")).events.some((entry) => entry.kind === "development_recovered"), false);

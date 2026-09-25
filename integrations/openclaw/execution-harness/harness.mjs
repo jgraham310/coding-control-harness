@@ -156,7 +156,7 @@ function developmentDispatch(state, source, kind, at, evidence) {
     // A dispatched development packet is a product issue. Its UAT gate is
     // mandatory from creation; the issue-derived contract determines how it is
     // executed, not whether it can be waived.
-    verifications: verificationNames.map((name) => ({ name, required: name === "staging_uat" || prePrGates.includes(name), status: "skipped", updatedAt: at, command: null, evidence: "Not applicable until an implementation packet is selected.", artifact: null, dueAt: null, journey: null })),
+    verifications: verificationNames.map((name) => ({ name, required: preProductionGates.includes(name), status: "skipped", updatedAt: at, command: null, evidence: "Not applicable until an implementation packet is selected.", artifact: null, dueAt: null, journey: null })),
     review: { status: "unreviewed", head: null, evidence: null, dueAt: null, updatedAt: null }
   };
   ensureWorkState(packet, at);
@@ -554,6 +554,10 @@ if (command === "status") {
     if (missing.length) fail(`Cannot open PR for #${item.issue}; required verification gates not passed: ${missing.join(", ")}.`);
     if (!contractSatisfied(item, head)) fail(`Cannot open PR for #${item.issue}; execution-contract validation is incomplete for the exact head.`);
   }
+  if (to === "reviewed") {
+    const head = arg("--head");
+    if (!head || !/^git:[0-9a-f]{40}$/.test(head) || item.review.status !== "clear" || item.review.head !== head) fail(`Cannot mark #${item.issue} reviewed without a clear exact-head review receipt.`);
+  }
   if (to === "production-verified") {
     const artifact = arg("--artifact");
     const sourceArtifact = arg("--source-artifact");
@@ -564,6 +568,10 @@ if (command === "status") {
   }
   const at = now();
   item.phase = to;
+  if (to === "completed") {
+    item.active = false;
+    item.nextActionDueAt = null;
+  }
   item.lastEvidence = { at, detail: evidence };
   item.heartbeatDueAt = deadline ?? null;
   item.blocker = to === "blocked" ? evidence : null;
@@ -739,6 +747,7 @@ if (command === "status") {
   for (const item of state.lanes.filter((candidate) => candidate.active)) {
     const unhealthyDispatch = dispatchHealth(item);
     if (unhealthyDispatch) {
+      const phaseBeforeInvalidation = item.phase;
       const evidence = `development_dispatch_invalid:${unhealthyDispatch}`;
       findings.push({ issue: item.issue, phase: item.phase, kind: "development_dispatch_invalid", evidence, nextAction: "Create or attach the correct isolated tmux lane, then record literal pane/worktree evidence." });
       if (process.argv.includes("--apply")) {
@@ -748,7 +757,7 @@ if (command === "status") {
         item.nextAction = "Create or attach the correct isolated tmux lane, then record literal pane/worktree evidence.";
         item.dispatch = { ...item.dispatch, status: "invalidated", invalidatedAt: at, invalidatedReason: unhealthyDispatch, invalidatedSource };
         event(state, { at, laneId: item.id, kind: "development_dispatch_invalid", evidence });
-        if (process.argv.includes("--auto-recover") && item.dispatch.autoRecover && ["identified", "implementing", "tests-running", "pr-open", "review-blocked", "stalled"].includes(item.phase)) {
+        if (process.argv.includes("--auto-recover") && item.dispatch.autoRecover && ["identified", "implementing", "tests-running", "pr-open", "review-blocked", "stalled"].includes(phaseBeforeInvalidation)) {
           try { recoverDevelopment(item, at); }
           catch (error) { event(state, { at, laneId: item.id, kind: "development_recovery_failed", evidence: String(error.message || error) }); }
         }

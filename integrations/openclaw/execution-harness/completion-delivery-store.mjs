@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { acquireStateLock } from "./state-lock.mjs";
 
 const SCHEMA_VERSION = 1;
 const CLAIM_TIMEOUT_MS = 90_000;
+function locked(statePath, fn) { const release = acquireStateLock(statePath); try { return fn(); } finally { release(); } }
 
 function emptyState() {
   return { schemaVersion: SCHEMA_VERSION, records: [] };
@@ -34,7 +36,10 @@ function contentHash(content) {
 function recoverExpiredClaims(state, now) {
   for (const record of state.records) {
     if (record.status === "claimed" && now - record.claimedAtMs >= CLAIM_TIMEOUT_MS) {
-      record.status = "pending";
+      // A timed-out send may already have reached the channel. Hold for
+      // transport reconciliation rather than creating a duplicate claim.
+      record.status = "uncertain";
+      record.lastFailureAtMs = now;
       delete record.claimedAtMs;
     }
   }
@@ -42,6 +47,7 @@ function recoverExpiredClaims(state, now) {
 
 export function recordCompletion({ statePath, runId, sessionKey, content, now = Date.now() }) {
   if (typeof content !== "string" || !content.trim()) return null;
+  return locked(statePath, () => {
   const state = readState(statePath);
   recoverExpiredClaims(state, now);
   const id = runId || `completion-${contentHash(content).slice(0, 16)}`;
@@ -60,9 +66,11 @@ export function recordCompletion({ statePath, runId, sessionKey, content, now = 
   }
   writeState(statePath, state);
   return record;
+  });
 }
 
 export function acknowledgeTelegramDelivery({ statePath, content, messageId, now = Date.now() }) {
+  return locked(statePath, () => {
   const state = readState(statePath);
   const hash = contentHash(content);
   let updated = 0;
@@ -77,9 +85,11 @@ export function acknowledgeTelegramDelivery({ statePath, content, messageId, now
   }
   if (updated) writeState(statePath, state);
   return updated;
+  });
 }
 
 export function acknowledgeCompletionDelivery({ statePath, id, messageId, now = Date.now() }) {
+  return locked(statePath, () => {
   const state = readState(statePath);
   const record = state.records.find((entry) => entry.id === id);
   if (!record || record.status === "delivered") return false;
@@ -89,15 +99,17 @@ export function acknowledgeCompletionDelivery({ statePath, id, messageId, now = 
   delete record.claimedAtMs;
   writeState(statePath, state);
   return true;
+  });
 }
 
 export function recordTelegramFailure({ statePath, content, now = Date.now() }) {
+  return locked(statePath, () => {
   const state = readState(statePath);
   const hash = contentHash(content);
   let updated = 0;
   for (const record of state.records) {
     if (record.status === "claimed" && record.contentHash === hash) {
-      record.status = "pending";
+      record.status = "uncertain";
       record.lastFailureAtMs = now;
       delete record.claimedAtMs;
       updated += 1;
@@ -105,17 +117,21 @@ export function recordTelegramFailure({ statePath, content, now = Date.now() }) 
   }
   if (updated) writeState(statePath, state);
   return updated;
+  });
 }
 
 export function hasPendingDelivery({ statePath, now = Date.now() }) {
+  return locked(statePath, () => {
   const state = readState(statePath);
   recoverExpiredClaims(state, now);
   const pending = state.records.some((record) => record.status === "pending");
   writeState(statePath, state);
   return pending;
+  });
 }
 
 export function claimPendingDelivery({ statePath, now = Date.now() }) {
+  return locked(statePath, () => {
   const state = readState(statePath);
   recoverExpiredClaims(state, now);
   const record = state.records.find((entry) => entry.status === "pending");
@@ -126,4 +142,5 @@ export function claimPendingDelivery({ statePath, now = Date.now() }) {
   }
   writeState(statePath, state);
   return record ?? null;
+  });
 }

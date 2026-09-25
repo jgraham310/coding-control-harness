@@ -50,6 +50,7 @@ function promote(manifest, record) {
   const tag = imageTag(manifest);
   const sourceImage = `${manifest.artifact.image.split(":")[0]}@${manifest.artifact.digest}`;
   const targetImage = `acrdrakesbranchvaprod.azurecr.io/clerk-suite:${tag}`;
+  record.promotionStarted = true;
   const imported = run("az", ["acr", "import", "-n", "acrdrakesbranchvaprod", "--source", sourceImage, "--image", `clerk-suite:${tag}`, "--force"], 180000);
   if (!imported.ok) throw new Error(`production image import failed: ${imported.error}`);
   const updated = run("az", ["containerapp", "update", "-n", manifest.production.app, "-g", manifest.production.resourceGroup, "--image", targetImage, "--revision-suffix", String(manifest.source.commit).slice(0, 10)], 180000);
@@ -147,7 +148,15 @@ function main() {
   };
   if (!reasons.length && mutate) {
     try { record.promotion = promote(manifest, record); record.outcome = "promoted-awaiting-60-minute-observation"; record.productionMutation = true; }
-    catch (error) { record.outcome = "promotion-failed-or-rolled-back"; record.reasons.push(error.message); record.productionMutation = true; }
+    catch (error) {
+      record.outcome = "promotion-failed-or-rolled-back";
+      record.reasons.push(error.message);
+      record.productionMutation = Boolean(record.promotionStarted);
+      if (!record.promotionStarted && promotionClaim) {
+        fs.unlinkSync(promotionClaim);
+        record.promotionClaim = null;
+      }
+    }
   }
   fs.mkdirSync(RECORDS, { recursive: true });
   const output = path.join(RECORDS, `civicline-${at.replace(/[:.]/g, "-")}.json`);

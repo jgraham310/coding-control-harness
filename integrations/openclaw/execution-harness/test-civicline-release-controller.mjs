@@ -45,6 +45,17 @@ try {
   assert.equal(repeated.outcome, "held");
   assert.equal(repeated.reasons.includes("promotion already claimed for this immutable manifest"), true);
   assert.equal(repeated.productionMutation, false);
+  const retryManifest = path.join(root, "release-trains", "candidate-retry.json");
+  fs.writeFileSync(retryManifest, `${JSON.stringify(manifest)}\n`);
+  const future = new Date(Date.now() + 60_000);
+  fs.utimesSync(retryManifest, future, future);
+  fs.writeFileSync(path.join(bin, "az"), `#!/bin/sh\nif [ "$1" = "containerapp" ] && [ "$2" = "show" ]; then exit 1; fi\nprintf '%s\\n' '{"state":"Running","health":"Healthy","image":"example.test/clerk-suite@${manifest.artifact.digest}"}'\n`);
+  const preMutation = JSON.parse(execFileSync("node", [controller, "--promote"], { encoding: "utf8", env: { ...process.env, CIVICLINE_RELEASE_ROOT: root, PATH: `${bin}:${process.env.PATH}` } }));
+  assert.equal(preMutation.outcome, "promotion-failed-or-rolled-back");
+  assert.equal(preMutation.productionMutation, false);
+  const retry = JSON.parse(execFileSync("node", [controller, "--promote"], { encoding: "utf8", env: { ...process.env, CIVICLINE_RELEASE_ROOT: root, PATH: `${bin}:${process.env.PATH}` } }));
+  assert.equal(retry.outcome, "promotion-failed-or-rolled-back", "pre-mutation failure remains retryable");
+  assert.equal(retry.reasons.includes("promotion already claimed for this immutable manifest"), false);
   console.log("civicline release controller immutable-candidate test: passed");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
