@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { recordCompletion, claimPendingDelivery, acknowledgeCompletionDelivery, recordTelegramFailure } from "./completion-delivery-store.mjs";
+
+const statePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "completion-delivery-lock-")), "state.json");
+const freshPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "completion-delivery-fresh-")), "nested", "state.json");
+assert.equal(recordCompletion({ statePath: freshPath, runId: "fresh", content: "First delivery" }).id, "fresh");
+assert.equal(fs.existsSync(freshPath), true);
+recordCompletion({ statePath, runId: "one", content: "Verified completion" });
+fs.mkdirSync(`${statePath}.lockdir`);
+fs.writeFileSync(path.join(`${statePath}.lockdir`, "owner.json"), JSON.stringify({ pid: process.pid, token: "held" }));
+assert.throws(() => claimPendingDelivery({ statePath }), /State is busy/);
+assert.equal(JSON.parse(fs.readFileSync(statePath, "utf8")).records[0].status, "pending");
+fs.rmSync(`${statePath}.lockdir`, { recursive: true });
+assert.equal(claimPendingDelivery({ statePath }).id, "one");
+assert.equal(claimPendingDelivery({ statePath }), null, "a claimed delivery cannot be sent twice");
+assert.equal(claimPendingDelivery({ statePath, now: Date.now() + 91_000 }), null, "an expired claim is uncertain, not replayed");
+assert.equal(JSON.parse(fs.readFileSync(statePath, "utf8")).records[0].status, "uncertain");
+assert.equal(acknowledgeCompletionDelivery({ statePath, id: "one", messageId: "receipt" }), true);
+assert.equal(claimPendingDelivery({ statePath }), null);
+recordCompletion({ statePath, runId: "two", content: "Second completion" });
+assert.equal(claimPendingDelivery({ statePath }).id, "two");
+assert.equal(recordTelegramFailure({ statePath, content: "Second completion" }), 1);
+assert.equal(claimPendingDelivery({ statePath }), null, "an uncertain transport failure cannot automatically resend");
+console.log("completion delivery lock tests: passed");
