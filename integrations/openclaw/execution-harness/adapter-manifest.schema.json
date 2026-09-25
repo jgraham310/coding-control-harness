@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "External adapter manifest",
+  "type": "object",
+  "required": ["id", "parentGoal", "successPredicate", "deadline", "cadence", "sources", "authority", "escalations", "executionContract"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "parentGoal": { "type": "string", "minLength": 1 },
+    "successPredicate": { "type": "string", "minLength": 1 },
+    "deadline": { "type": "string", "format": "date-time" },
+    "cadence": { "type": "string", "minLength": 1 },
+    "sources": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "authority": {
+      "type": "object",
+      "required": ["allowed", "jasonGated"],
+      "properties": {
+        "allowed": { "type": "array", "items": { "enum": ["observe", "draft", "internal_update"] } },
+        "jasonGated": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "escalations": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+    ,"executionContract": {
+      "type": "object",
+      "required": ["objective", "constraints", "validation", "stopCondition", "checkpointCadence"],
+      "properties": {
+        "objective": { "type": "string", "minLength": 1 },
+        "constraints": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "validation": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "stopCondition": { "type": "string", "minLength": 1 },
+        "checkpointCadence": { "type": "string", "minLength": 1 }
+      }
+    },
+    "independentReview": {
+      "type": "object",
+      "required": ["enabled", "triggers"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "triggers": { "type": "array", "items": { "enum": ["security_sensitive", "production_impacting", "disputed_change"] } }
+      }
+    }
+  }
+}
