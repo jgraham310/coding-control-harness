@@ -1,10 +1,10 @@
 // OpenClaw headless cron trigger. It uses no model tokens: the only work is a
 // deterministic state check. An agent turn starts only for a new material
 // event or an overdue lane that needs an action.
-const result = await tools.call("exec", {
-  command: "node /Users/jasongraham/.openclaw/repos/coding-control-harness-execution-placement/integrations/openclaw/execution-harness/harness.mjs watch --apply --auto-recover --state /Users/jasongraham/.openclaw/workspace-cos/ops/execution-harness/execution-state.json --work-state /Users/jasongraham/.openclaw/workspace-cos/ops/execution-harness/work-state.json"
+const result = await exec({
+  command: "/opt/homebrew/bin/node /Users/jasongraham/.openclaw/repos/coding-control-harness-execution-placement/integrations/openclaw/execution-harness/harness.mjs watch --apply --auto-recover --state /Users/jasongraham/.openclaw/workspace-cos/ops/execution-harness/execution-state.json --work-state /Users/jasongraham/.openclaw/workspace-cos/ops/execution-harness/work-state.json"
 });
-const raw = String(result?.result?.details?.aggregated ?? result?.result?.content ?? "").trim();
+const raw = String(result?.aggregated ?? "").trim();
 let observation;
 try {
   observation = JSON.parse(raw);

@@ -1,9 +1,9 @@
 // Headless trigger for promise-ledger resolvers. A model turn starts only when
 // a promised update or completion deadline is due.
-const result = await tools.call("exec", {
-  command: "node /Users/jasongraham/.openclaw/repos/coding-control-harness-execution-placement/integrations/openclaw/execution-harness/promise-ledger.mjs watch --apply --state /Users/jasongraham/.openclaw/workspace-cos/ops/execution-harness/promise-ledger.json"
+const result = await exec({
+  command: "/opt/homebrew/bin/node /Users/jasongraham/.openclaw/repos/coding-control-harness-execution-placement/integrations/openclaw/execution-harness/promise-ledger.mjs watch --apply --state /Users/jasongraham/.openclaw/workspace-cos/ops/execution-harness/promise-ledger.json"
 });
-const raw = String(result?.result?.details?.aggregated ?? result?.result?.content ?? "").trim();
+const raw = String(result?.aggregated ?? "").trim();
 let observation;
 try {
   observation = JSON.parse(raw);
