@@ -168,8 +168,8 @@ function contractChecks(item) {
   item.contractChecks ??= item.executionContract.validation.map((validation) => ({ validation, status: "pending", evidence: null, artifact: null, updatedAt: null }));
   return item.contractChecks;
 }
-function contractSatisfied(item) {
-  return !item.executionContract || contractChecks(item).every((check) => check.status === "passed" && check.evidence && check.artifact);
+function contractSatisfied(item, head = null) {
+  return !item.executionContract || contractChecks(item).every((check) => check.status === "passed" && check.evidence && check.artifact && (head === null || check.artifact === head));
 }
 function contractPrompt(contract, nextAction) {
   return [
@@ -210,10 +210,15 @@ function durableWorkStateContext(item) {
   const file = workStatePath();
   let runtime;
   try { runtime = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null; }
-  catch (error) { fail(`Unable to read WorkState runtime for ${item.id}: ${error.message}`); }
-  if (!runtime) fail(`Lane ${item.id} declares WorkState ${item.workStateId}, but the durable runtime is absent.`);
-  try { validateRuntime(runtime); return workStateContext(runtime, item.workStateId); }
-  catch (error) { fail(`Invalid WorkState for ${item.id}: ${error.message}`); }
+  catch (error) { throw new Error(`Unable to read WorkState runtime for ${item.id}: ${error.message}`); }
+  if (!runtime) throw new Error(`Lane ${item.id} declares WorkState ${item.workStateId}, but the durable runtime is absent.`);
+  try {
+    validateRuntime(runtime);
+    const context = workStateContext(runtime, item.workStateId);
+    const expected = item.dispatch?.invalidatedSource ?? { nextAction: item.nextAction, deadline: item.heartbeatDueAt ?? item.nextActionDueAt ?? null };
+    if (context.workState.nextAction !== expected.nextAction || context.workState.deadline !== expected.deadline) throw new Error("WorkState is stale relative to execution state; refresh the durable record before recovery");
+    return context;
+  } catch (error) { throw new Error(`Invalid WorkState for ${item.id}: ${error.message}`); }
 }
 function ensureWorkState(item, at) {
   const file = workStatePath();
@@ -251,20 +256,20 @@ function recoveryCommand(item) {
   return { command: `claude -p ${JSON.stringify(prompt)} --dangerously-skip-permissions`, handoff };
 }
 function recoverDevelopment(item, at) {
-  if (!item.dispatch?.autoRecover || item.dispatch.status !== "invalidated") fail(`Lane ${item.id} is not eligible for automatic recovery.`);
-  if (!["identified", "implementing", "tests-running", "pr-open", "review-blocked", "stalled"].includes(item.phase)) fail(`Lane ${item.id} is terminal or not safely recoverable.`);
+  if (!item.dispatch?.autoRecover || item.dispatch.status !== "invalidated") throw new Error(`Lane ${item.id} is not eligible for automatic recovery.`);
+  if (!["identified", "implementing", "tests-running", "pr-open", "review-blocked", "stalled"].includes(item.phase)) throw new Error(`Lane ${item.id} is terminal or not safely recoverable.`);
   const worktree = expectedWorktree(item);
-  if (!fs.statSync(worktree, { throwIfNoEntry: false })?.isDirectory()) fail(`Recovery worktree is missing: ${worktree}`);
+  if (!fs.statSync(worktree, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`Recovery worktree is missing: ${worktree}`);
   const session = item.dispatch.session ?? item.tmuxSession ?? item.id;
-  try { execFileSync("tmux", ["has-session", "-t", session], { stdio: "ignore" }); fail(`Recovery session already exists: ${session}`); } catch (error) { if (error?.status === undefined) throw error; }
+  try { execFileSync("tmux", ["has-session", "-t", session], { stdio: "ignore" }); throw new Error(`Recovery session already exists: ${session}`); } catch (error) { if (error?.status === undefined) throw error; }
   const recovery = recoveryCommand(item);
-  if (!recovery.command) fail(`Lane ${item.id} has no recoverable dispatch command.`);
+  if (!recovery.command) throw new Error(`Lane ${item.id} has no recoverable dispatch command.`);
   execFileSync("tmux", ["new-session", "-d", "-s", session, "-c", worktree, recovery.command], { stdio: "ignore" });
   const pane = `${session}:0.0`;
   const observed = tmuxPaneState(session, pane);
   if (!observed.ok || observed.cwd !== worktree) {
     try { execFileSync("tmux", ["kill-session", "-t", session], { stdio: "ignore" }); } catch {}
-    fail(`Recovery dispatch failed literal pane/worktree verification for ${item.id}.`);
+    throw new Error(`Recovery dispatch failed literal pane/worktree verification for ${item.id}.`);
   }
   item.dispatch = { ...item.dispatch, status: "attached", session, pane, worktree, command: recovery.command, recoveryAt: at, recoveryCount: (item.dispatch.recoveryCount ?? 0) + 1, handoff: recovery.handoff };
   item.phase = item.phase === "stalled" ? "implementing" : item.phase;
@@ -470,6 +475,23 @@ function manifestCandidate(item, manifest) {
 
 const command = process.argv[2];
 const stateFile = arg("--state", defaultState);
+const lockDir = `${stateFile}.lockdir`;
+function acquireStateLock() {
+  try { fs.mkdirSync(lockDir); }
+  catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    let owner;
+    try { owner = Number(fs.readFileSync(path.join(lockDir, "pid"), "utf8")); } catch { fail(`Execution state is busy: ${stateFile}`); }
+    if (!Number.isInteger(owner) || owner < 1) fail(`Execution state has an invalid lock owner: ${stateFile}`);
+    try { process.kill(owner, 0); fail(`Execution state is busy: ${stateFile}`); }
+    catch (signalError) { if (signalError.code !== "ESRCH") throw signalError; }
+    fs.rmSync(lockDir, { recursive: true, force: true });
+    fs.mkdirSync(lockDir);
+  }
+  fs.writeFileSync(path.join(lockDir, "pid"), String(process.pid));
+  process.on("exit", () => { try { fs.rmSync(lockDir, { recursive: true, force: true }); } catch {} });
+}
+acquireStateLock();
 const state = validate(normalize(load(stateFile)));
 
 if (command === "status") {
@@ -538,9 +560,11 @@ if (command === "status") {
   if (!evidence.trim()) fail("A transition requires observable evidence.");
   if (deadline) iso(deadline, "--heartbeat-due");
   if (to === "pr-open") {
-    const missing = missingPassedGates(item, prePrGates);
+    const head = arg("--head");
+    if (!head || !/^git:[0-9a-f]{40}$/.test(head)) fail(`Cannot open PR for #${item.issue}; --head must identify the exact 40-character commit.`);
+    const missing = missingPassedGates(item, prePrGates, head);
     if (missing.length) fail(`Cannot open PR for #${item.issue}; required verification gates not passed: ${missing.join(", ")}.`);
-    if (!contractSatisfied(item)) fail(`Cannot open PR for #${item.issue}; execution-contract validation is incomplete.`);
+    if (!contractSatisfied(item, head)) fail(`Cannot open PR for #${item.issue}; execution-contract validation is incomplete for the exact head.`);
   }
   if (to === "production-verified") {
     const artifact = arg("--artifact");
@@ -730,10 +754,11 @@ if (command === "status") {
       const evidence = `development_dispatch_invalid:${unhealthyDispatch}`;
       findings.push({ issue: item.issue, phase: item.phase, kind: "development_dispatch_invalid", evidence, nextAction: "Create or attach the correct isolated tmux lane, then record literal pane/worktree evidence." });
       if (process.argv.includes("--apply")) {
+        const invalidatedSource = { nextAction: item.nextAction, deadline: item.heartbeatDueAt ?? item.nextActionDueAt ?? null };
         item.phase = "stalled";
         item.blocker = evidence;
         item.nextAction = "Create or attach the correct isolated tmux lane, then record literal pane/worktree evidence.";
-        item.dispatch = { ...item.dispatch, status: "invalidated", invalidatedAt: at, invalidatedReason: unhealthyDispatch };
+        item.dispatch = { ...item.dispatch, status: "invalidated", invalidatedAt: at, invalidatedReason: unhealthyDispatch, invalidatedSource };
         event(state, { at, laneId: item.id, kind: "development_dispatch_invalid", evidence });
         if (process.argv.includes("--auto-recover") && item.dispatch.autoRecover && ["identified", "implementing", "tests-running", "pr-open", "review-blocked", "stalled"].includes(item.phase)) {
           try { recoverDevelopment(item, at); }
