@@ -74,22 +74,43 @@ assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)
   writeFileSync(join(bin, 'gh'), `#!/usr/bin/env node
 const head = process.env.TEMS_TEST_HEAD;
 if (process.argv[2] === 'pr') {
+  const checks = process.env.TEMS_TEST_CHECKS;
+  const review = { context: 'portfolio/review-clear', state: checks === 'failed-clear' ? 'FAILURE' : 'SUCCESS' };
+  const rollup = checks === 'empty' ? [] : [{ name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' },
+    ...(checks === 'missing-clear' ? [] : [review])];
   process.stdout.write(JSON.stringify({ headRefOid: head, isDraft: false, mergeStateStatus: 'CLEAN',
-    statusCheckRollup: [{ name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' }] }));
+    ...(checks === 'missing' ? {} : { statusCheckRollup: rollup }) }));
 } else {
   const mode = process.env.TEMS_TEST_HOST_STATUS;
-  const created_at = mode === 'stale' ? new Date(Date.now() - 3600000).toISOString() : new Date().toISOString();
-  process.stdout.write(JSON.stringify({ sha: mode === 'wrong-head' ? '0'.repeat(40) : head,
-    statuses: mode === 'absent' ? [] : [{ context: 'tems/canonical-host-integration',
-      state: mode === 'failure' ? 'failure' : 'success', created_at }] }));
+  const checks = process.env.TEMS_TEST_CHECKS;
+  const hostAt = mode === 'stale' ? new Date(Date.now() - 3600000).toISOString() : new Date().toISOString();
+  const reviewAt = checks === 'stale-clear' ? new Date(0).toISOString() : new Date().toISOString();
+  process.stdout.write(JSON.stringify({ sha: mode === 'wrong-head' || checks === 'wrong-head-clear' ? '0'.repeat(40) : head,
+    statuses: [
+      ...(checks === 'absent-clear' ? [] : [{ context: 'portfolio/review-clear',
+        state: checks === 'failed-clear-status' ? 'failure' : 'success', created_at: reviewAt }]),
+      ...(mode === 'absent' ? [] : [{ context: 'tems/canonical-host-integration',
+        state: mode === 'failure' ? 'failure' : 'success', created_at: hostAt }]) ] }));
 }
 `, { mode: 0o755 });
+  for (const checks of ['missing', 'empty', 'missing-clear', 'failed-clear', 'absent-clear',
+    'failed-clear-status', 'stale-clear', 'wrong-head-clear']) {
+    const result = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
+      '--pr', String(pr), '--head', head], { cwd: fixture, encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEMS_TEST_HEAD: head,
+        TEMS_TEST_HOST_STATUS: 'success', TEMS_TEST_CHECKS: checks } });
+    assert.equal(result.status, 1, `${checks} must deny`);
+    assert.match(result.stderr, /checks are missing or empty|portfolio\/review-clear|non-success checks/);
+    assert.equal(existsSync(receipt), false, `${checks} denial must not write merge decision`);
+  }
   for (const mode of ['absent', 'failure', 'stale', 'wrong-head']) {
     const result = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
       '--pr', String(pr), '--head', head], { cwd: fixture, encoding: 'utf8',
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEMS_TEST_HEAD: head, TEMS_TEST_HOST_STATUS: mode } });
     assert.equal(result.status, 1, `${mode} canonical-host status must deny`);
-    assert.match(result.stderr, /canonical-host integration status/);
+    assert.match(result.stderr, mode === 'wrong-head'
+      ? /exact-head portfolio\/review-clear status|canonical-host integration status/
+      : /canonical-host integration status/);
     assert.equal(existsSync(receipt), false, `${mode} denial must not write a merge decision`);
   }
   writeFileSync(parity, `import { writeFileSync } from 'node:fs';
