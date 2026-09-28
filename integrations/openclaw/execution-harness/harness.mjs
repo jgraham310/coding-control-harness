@@ -720,9 +720,10 @@ if (command === "status") {
   item.tmuxSession = session;
   const heldError = Boolean(item.dispatch.errorHold);
   const attachment = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at, laneError: null };
+  if (attachment.paneStream?.pane !== observed.target) attachment.paneStream = null;
   const baseline = paneSnapshot({ dispatch: attachment });
   if (!baseline) fail(`Cannot attach #${item.issue}; the pane could not be captured for a fresh-output baseline.`);
-  if (heldError) {
+  if (heldError || item.dispatch.paneStream) {
     const { stream } = rearmPaneStream({ ...item, dispatch: attachment });
     attachment.paneStream = stream;
   }

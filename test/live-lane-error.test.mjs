@@ -31,6 +31,9 @@ const harness = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../i
 const streamFilter = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/pane-error-stream.mjs');
 assert.equal(execFileSync('node', [streamFilter], { input: "secret=not-an-error\nError: Cannot find module '/deleted/hook.js'\n", encoding: 'utf8' }), 'hook_module_not_found\n', 'stream retains only bounded error markers');
 assert.equal(execFileSync('node', [streamFilter], { input: "A prior Error: Cannot find module is only prose\n\x1b[31mError: Cannot find module '/deleted/hook.js'\x1b[0m\nold prompt\r\x1b[2KError: Cannot find module '/deleted/hook.js'\n", encoding: 'utf8' }), 'hook_module_not_found\nhook_module_not_found\n', 'colored and cursor-repainted terminal errors become bounded markers without accepting prose');
+assert.equal(execFileSync('node', [streamFilter], { input: "old prompt\x1b[1E\x1b[2KError: Cannot find module '/deleted/hook.js'", encoding: 'utf8' }), 'hook_module_not_found\n', 'CSI next-line moves create a visual boundary without a newline');
+assert.equal(execFileSync('node', [streamFilter], { input: "old prompt\x9b1E\x9b2KError: Cannot find module '/deleted/hook.js'", encoding: 'utf8' }), 'hook_module_not_found\n', 'eight-bit CSI next-line moves create the same boundary');
+assert.equal(execFileSync('node', [streamFilter], { input: "old prompt\rError: Cannot find module '/deleted/hook.js'", encoding: 'utf8' }), 'hook_module_not_found\n', 'CR-only repaint is detected before a newline');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
@@ -92,6 +95,14 @@ try {
   assert.throws(() => command('attach-development', '--issue', '566', '--tmux-session', 'fake', '--tmux-pane', 'fake:0.0', '--evidence', 'Attempted reattach without capture.', '--heartbeat-due', '2099-01-01T00:00:00Z'), /Command failed/, 'reattach also fails closed without pane capture');
   fs.renameSync(`${paneFile}.unavailable`, paneFile);
   assert.equal(JSON.parse(fs.readFileSync(stateFile)).lanes[0].dispatch.errorHold !== null, true);
+  fs.rmSync(pipeMarker);
+  command('attach-development', '--issue', '566', '--tmux-session', 'fake', '--tmux-pane', 'fake:1.0', '--evidence', 'Operator moved the sole lane to a new pane.', '--heartbeat-due', '2099-01-01T00:00:00Z');
+  stored = JSON.parse(fs.readFileSync(stateFile));
+  assert.equal(stored.lanes[0].dispatch.paneStream.pane, 'fake:1.0');
+  assert.notEqual(stored.lanes[0].dispatch.paneStream.path, streamFile);
+  assert.equal(run('2026-09-28T19:12:06Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'new pane does not inherit stale output monitor');
+  fs.appendFileSync(stored.lanes[0].dispatch.paneStream.path, 'hook_module_not_found\n');
+  assert.equal(run('2026-09-28T19:12:07Z').findings.some((entry) => entry.kind === 'development_lane_error'), true, 'fresh new-pane error still holds');
 
   write({ ...fixture, lanes: [{ ...lane, blocker: 'approval required' }] });
   assert.equal(run('2026-09-28T19:12:00Z').findings.some((entry) => entry.kind === 'development_lane_error'), false);
