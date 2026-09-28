@@ -28,6 +28,7 @@ try {
   const head = '1234567890abcdef1234567890abcdef12345678';
   const proof = join(dir, 'protocol.json');
   const statePath = join(dir, 'kernel-state.json');
+  assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof, statePath), /protocol evidence is missing or stale/);
   const now = Date.now();
   const valid = { kind: 'kernel_pr_verification', status: 'passed', repository: 'jgraham310/tems',
     pr: 654, head_sha: head, artifact: `git:${head}`, observer: 'coding-kernel',
