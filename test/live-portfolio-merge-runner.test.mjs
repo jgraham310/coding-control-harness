@@ -79,7 +79,9 @@ if (process.argv[2] === 'pr') {
     ...(checks === 'contradictory-clear' ? { status: 'IN_PROGRESS', conclusion: null } : {}) };
   const rollup = checks === 'empty' ? [] : [{ name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' },
     ...(checks === 'failing-other' ? [{ name: 'security', status: 'COMPLETED', conclusion: 'FAILURE' }] : []),
-    ...(checks === 'missing-clear' ? [] : [review])];
+    ...(checks === 'missing-clear' ? [] : [review]),
+    ...(checks === 'missing-host-check' ? [] : [{ context: 'tems/canonical-host-integration',
+      state: checks === 'failed-host-check' ? 'FAILURE' : 'SUCCESS' }])];
   process.stdout.write(JSON.stringify({ headRefOid: head, isDraft: false, mergeStateStatus: 'CLEAN',
     ...(checks === 'missing' ? {} : { statusCheckRollup: rollup }) }));
 } else {
@@ -96,14 +98,14 @@ if (process.argv[2] === 'pr') {
 }
 `, { mode: 0o755 });
   for (const checks of ['missing', 'empty', 'missing-clear', 'failed-clear', 'failing-other',
-    'contradictory-clear', 'absent-clear',
+    'contradictory-clear', 'absent-clear', 'missing-host-check', 'failed-host-check',
     'failed-clear-status', 'stale-clear', 'wrong-head-clear']) {
     const result = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
       '--pr', String(pr), '--head', head], { cwd: fixture, encoding: 'utf8',
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEMS_TEST_HEAD: head,
         TEMS_TEST_HOST_STATUS: 'success', TEMS_TEST_CHECKS: checks } });
     assert.equal(result.status, 1, `${checks} must deny`);
-    assert.match(result.stderr, /checks are missing or empty|portfolio\/review-clear|non-success checks/);
+    assert.match(result.stderr, /checks are missing or empty|portfolio\/review-clear|canonical-host-integration|non-success checks/);
     assert.equal(existsSync(receipt), false, `${checks} denial must not write merge decision`);
   }
   for (const mode of ['absent', 'failure', 'stale', 'wrong-head']) {

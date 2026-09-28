@@ -45,8 +45,10 @@ function requireCurrentChecks(repository, head, rollup, reviewedAt) {
     : check.state === 'SUCCESS';
   const failed = rollup.filter((check) => !check || !success(check));
   if (failed.length) throw new Error(`PR has non-success checks: ${failed.map((check) => check ? name(check) : 'invalid').join(',')}`);
-  if (rollup.filter((check) => name(check) === 'portfolio/review-clear').length !== 1) {
-    throw new Error('required portfolio/review-clear check is missing or ambiguous');
+  for (const required of ['portfolio/review-clear', ...(repository === 'jgraham310/tems' ? ['tems/canonical-host-integration'] : [])]) {
+    if (rollup.filter((check) => name(check) === required).length !== 1) {
+      throw new Error(`required ${required} check is missing or ambiguous`);
+    }
   }
   const response = JSON.parse(run(['api', `repos/${repository}/commits/${head}/status`]));
   const statuses = Array.isArray(response.statuses) ? response.statuses : [];
