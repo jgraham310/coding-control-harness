@@ -73,18 +73,24 @@ assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)
   mkdirSync(bin);
   writeFileSync(join(bin, 'gh'), `#!/usr/bin/env node
 const head = process.env.TEMS_TEST_HEAD;
-if (process.argv[2] === 'pr') {
+if (process.argv[2] === 'api' && process.argv[3] === 'graphql') {
+  if (!process.env.TEMS_TEST_NON_TEMS) process.exit(77);
+  process.stdout.write(JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } } } } } }));
+} else if (process.argv[2] === 'pr' && process.argv[3] === 'merge') {
+  process.stdout.write('merged');
+} else if (process.argv[2] === 'pr') {
   const checks = process.env.TEMS_TEST_CHECKS;
   const review = { context: 'portfolio/review-clear', state: checks === 'failed-clear' ? 'FAILURE' : 'SUCCESS',
     ...(checks === 'contradictory-clear' ? { status: 'IN_PROGRESS', conclusion: null } : {}) };
   const rollup = checks === 'empty' ? [] : [{ name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' },
     ...(checks === 'failing-other' ? [{ name: 'security', status: 'COMPLETED', conclusion: 'FAILURE' }] : []),
     ...(checks === 'missing-clear' ? [] : [review]),
-    ...(checks === 'missing-host-check' ? [] : [{ context: 'tems/canonical-host-integration',
+    ...(process.env.TEMS_TEST_NON_TEMS || checks === 'missing-host-check' ? [] : [{ context: 'tems/canonical-host-integration',
       state: checks === 'failed-host-check' ? 'FAILURE' : 'SUCCESS' }])];
   process.stdout.write(JSON.stringify({ headRefOid: head, isDraft: false, mergeStateStatus: 'CLEAN',
     ...(checks === 'missing' ? {} : { statusCheckRollup: rollup }) }));
 } else {
+  if (process.env.TEMS_TEST_NON_TEMS) process.exit(77);
   const mode = process.env.TEMS_TEST_HOST_STATUS;
   const checks = process.env.TEMS_TEST_CHECKS;
   const hostAt = mode === 'stale' ? new Date(Date.now() - 3600000).toISOString() : new Date().toISOString();
@@ -134,6 +140,36 @@ if (process.env.TEMS_TEST_PARITY === 'drift') process.exit(1);
     else assert.doesNotMatch(result.stderr, /host-parity\.mjs/);
     rmSync(parityMarker);
   }
+  // Issue #47 invariant 4: the new TEMS contexts and status ordering do not gate other repositories.
+  const otherRepo = 'jgraham310/other';
+  const otherPr = 77;
+  writeFileSync(join(fixture, 'policy/auto-merge-allowlist.json'), JSON.stringify({
+    schema_version: 1, entries: [{ repository: otherRepo, pr: otherPr, head_sha: head,
+      authorized_at: '2026-09-27T00:00:00Z', authorized_by: 'test fixture', reason: 'Non-TEMS scope control' }]
+  }));
+  const otherReview = join(fixture, `evidence/codex-review/jgraham310__other/pr-${otherPr}/${head}.json`);
+  const otherReceipt = join(fixture, `evidence/pr-merge/jgraham310__other/pr-${otherPr}/${head}.json`);
+  mkdirSync(dirname(otherReview), { recursive: true });
+  writeFileSync(otherReview, JSON.stringify({ repository: otherRepo, pr: otherPr, head_sha: head,
+    outcome: 'clean', reviewed_at: new Date().toISOString() }));
+  for (const checks of ['missing-clear', 'empty']) {
+    const result = spawnSync(process.execPath, [runner, '--repo', otherRepo,
+      '--pr', String(otherPr), '--head', head], { cwd: fixture, encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEMS_TEST_HEAD: head,
+        TEMS_TEST_NON_TEMS: '1', TEMS_TEST_CHECKS: checks } });
+    assert.equal(result.status, 0, `non-TEMS ${checks} must retain prior merge behavior: ${result.stderr}`);
+    const decision = JSON.parse(readFileSync(otherReceipt, 'utf8'));
+    assert.equal(decision.outcome, 'merged');
+    assert.equal('portfolio_review_clear_at' in decision, false, 'non-TEMS receipt schema is unchanged');
+    rmSync(otherReceipt);
+  }
+  const otherFail = spawnSync(process.execPath, [runner, '--repo', otherRepo,
+    '--pr', String(otherPr), '--head', head], { cwd: fixture, encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEMS_TEST_HEAD: head,
+      TEMS_TEST_NON_TEMS: '1', TEMS_TEST_CHECKS: 'failing-other' } });
+  assert.equal(otherFail.status, 1, 'non-TEMS failing check must still deny');
+  assert.match(otherFail.stderr, /non-success checks/);
+  assert.equal(existsSync(otherReceipt), false, 'non-TEMS denial must not write decision');
   console.log('live portfolio merge runner source/deployed charter denial: passed');
 } finally {
   rmSync(fixture, { recursive: true, force: true });
