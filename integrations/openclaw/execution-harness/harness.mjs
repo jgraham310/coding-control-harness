@@ -351,11 +351,14 @@ function panePipeActive(pane) {
   catch { return false; }
 }
 function rearmPaneStream(item) {
-  const snapshot = paneSnapshot(item);
-  if (!snapshot) fail(`Cannot rearm #${item.issue}; the attached pane could not be captured for a fresh-output baseline.`);
   const existing = item.dispatch.paneStream;
   if (existing?.pane === item.dispatch.pane && panePipeActive(item.dispatch.pane)) {
-    try { return { snapshot, stream: { ...existing, offset: fs.statSync(existing.path).size } }; }
+    try {
+      const offset = fs.statSync(existing.path).size;
+      const snapshot = paneSnapshot(item);
+      if (!snapshot) fail(`Cannot rearm #${item.issue}; the attached pane could not be captured for a fresh-output baseline.`);
+      return { snapshot, stream: { ...existing, offset } };
+    }
     catch { fail(`Cannot rearm #${item.issue}; the pane output stream is unavailable.`); }
   }
   if (panePipeActive(item.dispatch.pane)) fail(`Cannot rearm #${item.issue}; the pane already has another output pipe.`);
@@ -367,8 +370,13 @@ function rearmPaneStream(item) {
     const filter = `'${path.resolve(here, "../../../src/pane-error-stream.mjs").replace(/'/g, "'\\''")}'`;
     execFileSync("tmux", ["pipe-pane", "-O", "-o", "-t", item.dispatch.pane, `${node} ${filter} >> ${quoted}`], { timeout: 5000 });
     if (!panePipeActive(item.dispatch.pane)) throw new Error("output pipe did not attach");
+    const snapshot = paneSnapshot(item);
+    if (!snapshot) throw new Error("attached pane could not be captured for a fresh-output baseline");
     return { snapshot, stream: { pane: item.dispatch.pane, path: streamPath, offset: 0 } };
   } catch (error) {
+    if (panePipeActive(item.dispatch.pane)) {
+      try { execFileSync("tmux", ["pipe-pane", "-t", item.dispatch.pane], { timeout: 5000 }); } catch {}
+    }
     try { fs.unlinkSync(streamPath); } catch {}
     fail(`Cannot rearm #${item.issue}; pane output stream failed: ${error.message}`);
   }

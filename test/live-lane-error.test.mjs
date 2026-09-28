@@ -14,6 +14,7 @@ const pipeMarker = path.join(root, 'pipe-active');
 fs.writeFileSync(paneFile, "Error: Cannot find module '/deleted/hook.js'\n");
 const tmux = path.join(fakeBin, 'tmux');
 fs.writeFileSync(tmux, `#!/bin/sh
+if [ -n "$TEST_TMUX_LOG" ]; then printf '%s\\n' "$*" >> "$TEST_TMUX_LOG"; fi
 case "$1" in
   has-session) exit 0 ;;
   display-message) if [ "$5" = '#{pane_pipe}' ]; then if [ -f "$TEST_PIPE_MARKER.$4" ]; then echo 1; else echo 0; fi; else printf '%s\\n' "$TEST_WORKTREE"; fi ;;
@@ -43,7 +44,9 @@ assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[1KErr
 assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[2KError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'erase-entire-line clears the visual prefix');
 assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[5GError: Cannot find module x', encoding: 'utf8' }), '', 'column-five movement leaves a visible prefix');
 assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[1;5HError: Cannot find module x', encoding: 'utf8' }), '', 'same-row column-five movement leaves a visible prefix');
-assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[2;5HError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'moving to a different visual row starts fresh classification');
+assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[2;5HError: Cannot find module x', encoding: 'utf8' }), '', 'a non-column-one row move does not prove the destination prefix is empty');
+assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[10DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'relative cursor-left repaint reaching column one starts fresh classification');
+assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[5DError: Cannot find module x', encoding: 'utf8' }), '', 'relative cursor-left short of column one preserves the visible prefix');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
@@ -124,9 +127,13 @@ try {
   assert.equal(run('2026-09-28T19:12:08Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'first-attach hold is durable across repeat watch');
   fs.writeFileSync(paneFile, 'healthy pane before monitor installation\n');
   env.TEST_INJECT_ON_PIPE = 'fake:3.0';
+  env.TEST_TMUX_LOG = path.join(root, 'attach-tmux.log');
   write({ ...fixture, lanes: [{ ...lane, phase: 'identified', dispatch: { ...lane.dispatch, status: 'ready' } }] });
   command('attach-development', '--issue', '566', '--tmux-session', 'fake', '--tmux-pane', 'fake:3.0', '--evidence', 'First attachment while executor emits an error.', '--heartbeat-due', '2099-01-01T00:00:00Z');
   delete env.TEST_INJECT_ON_PIPE;
+  const attachCalls = fs.readFileSync(env.TEST_TMUX_LOG, 'utf8').split('\n');
+  delete env.TEST_TMUX_LOG;
+  assert.ok(attachCalls.findIndex((call) => call.startsWith('pipe-pane -O -o -t fake:3.0')) < attachCalls.findIndex((call) => call.startsWith('capture-pane ')), 'first-attach pipe precedes every pane capture');
   stored = JSON.parse(fs.readFileSync(stateFile));
   assert.equal(stored.lanes[0].phase, 'stalled', 'error between pipe installation and final capture is held');
   assert.equal(stored.events.filter((entry) => entry.kind === 'development_lane_error').length, 1);

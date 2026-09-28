@@ -47,15 +47,17 @@ process.stdin.on('data', (chunk) => {
         } else if (final === 'G') {
           column = positive(params[0]);
           if (column === 1) boundary();
+        } else if (final === 'D' || final === 'C') {
+          column = final === 'D' ? Math.max(1, column - positive(params[0])) : column + positive(params[0]);
+          if (final === 'D' && column === 1) boundary();
         } else if (final === 'H' || final === 'f') {
           const nextRow = positive(params[0]);
           const nextColumn = positive(params[1]);
-          if (nextRow !== row || nextColumn === 1) boundary();
+          if (nextColumn === 1) boundary();
           row = nextRow;
           column = nextColumn;
         } else if (final === 'd') {
           const nextRow = positive(params[0]);
-          if (nextRow !== row) boundary();
           row = nextRow;
         } else if (final === 'K' && ['1', '2'].includes(csi)) boundary();
         mode = 'text';
