@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
   "gate": "candidate-runner-contract-only",
-  "observedAt": "2026-09-28T14:04:57.122Z",
+  "observedAt": "2026-09-28T14:16:05.784Z",
   "hashes": {
     "package.json": "ddcfe1f06b314b62aa6c0ebaf7397b9f91aada6f33bc8588bcbd2eaeacef7c24",
     "src/coding-kernel.mjs": "41318f0e569e95c7ebced733c3d2561ca8cfe86f2e7fdc4544b92b5049489e87",
     "src/tems-merge-authority.mjs": "e07de0fdddc9ba2a9bedea98f1bcfc1fc473461356ab0e526f1515b9de0221a4",
-    "src/civicline-merge-authority.mjs": "8d85f62e6d51aa49ee3e8f062c6c845fe805e3ee9b44f7780c6ffaba872b7028",
+    "src/civicline-merge-authority.mjs": "f8cb9bbbd6ddd9bc7121e8af04de27687a8682388245a8e03686c09306df8fc4",
     "test/coding-kernel.test.mjs": "1c1c3da2dea1037728999082494c34f60e82de5c97aa78f4f6e0c4a4006d8d5b",
     "test/tems-merge-authority.test.mjs": "5a279b1b6b14dd7bdbaf49d0eed04db01261987c0f1db775231948692ee5ddba",
-    "test/civicline-merge-authority.test.mjs": "2c770a4ab1d4eb13bb507173dadc75c98d5c39937d090e8c7e05d6824b10fe43",
+    "test/civicline-merge-authority.test.mjs": "610cdc323eef9d37b970c2806c6b5e01658bbd3187c7fb94feebabd909ec84f1",
     "test/live-portfolio-merge-runner.test.mjs": "5e4df915826838d9af01a8fea5394a7673d2bd0d20044d19eb29506a808bcc8d",
     "test/live-portfolio-merge-runner.host.test.mjs": "ceb899eabbe205e5cee5cd96672791c25c7c992aa18f35e04561bf98a9696cf6",
     "test/fixtures/pr-merge-runner.mjs": "b36c4e375c0ada3624a27d496681632fedeea702fdaaa407958ddc65f4503b21",

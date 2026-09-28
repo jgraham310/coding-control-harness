@@ -5,19 +5,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkCurrent, evaluateMerge } from '../src/civicline-merge-authority.mjs';
 const head='a'.repeat(40),base='b'.repeat(40),now=Date.now(), issue=3000;
-const browserReceipt={head,terminalOutcome:'PASS'};
+const deploymentReceipt={head,imageDigest:`sha256:${'c'.repeat(64)}`,servingRevision:'clerk-uat--0000003'};
+const deploymentDigest=createHash('sha256').update(JSON.stringify(deploymentReceipt)).digest('hex');
+const browserReceipt={...deploymentReceipt,terminalOutcome:'PASS'};
 const browserDigest=createHash('sha256').update(JSON.stringify(browserReceipt)).digest('hex');
-const browserRef='civicline-browser-proof';
+const browserRef='civicline-browser-proof',deploymentRef='civicline-current-deployment';
 const charter={agentId:'civicline-cto',mode:'routine',repositories:['jgraham310/local-government'],autonomousOperations:['merge_green_pr'],protocolRequired:['merge_green_pr'],boundedAuthority:{merge:true,production:false,customerData:false,prohibitedOperations:[]}};
-const state={records:{'cto:civicline':{status:'active',authorityBoundary:{allowedActions:['merge_green_pr']},evidenceRefs:['civicline-merge-staging-grant-20260928',browserRef]}},evidence:{'civicline-merge-staging-grant-20260928':{status:'verified'},[browserRef]:{status:'verified',artifact:`sha256:${browserDigest}`}}};
+const state={records:{'cto:civicline':{status:'active',authorityBoundary:{allowedActions:['merge_green_pr']},currentDeploymentEvidenceRef:deploymentRef,evidenceRefs:['civicline-merge-staging-grant-20260928',browserRef,deploymentRef]}},evidence:{'civicline-merge-staging-grant-20260928':{status:'verified'},[browserRef]:{status:'verified',artifact:`sha256:${browserDigest}`},[deploymentRef]:{status:'verified',artifact:`sha256:${deploymentDigest}`}}};
 const pr={number:2981,state:'open',draft:false,mergeable:true,user:{login:'author'},head:{sha:head},base:{sha:base}};
 const checks=[{bucket:'pass'},{bucket:'pass'}];
 const url='https://github.com/jgraham310/local-government/pull/2981#review';
-const proof={repository:'jgraham310/local-government',pr:2981,head,base,review:{head,independent:true,reviewer:'reviewer',url,observedAt:new Date(now).toISOString(),findings:[{id:'review-P2-1',severity:'P2'}]},acceptance:{issueDerived:true,negativeControls:true,deterministicTests:true,head,browserRequired:true,browserTerminalOutcome:'PASS',browserHead:head,browserEvidenceRef:browserRef},p2Disposition:{head,issue,findingIds:['review-P2-1']}};
+const proof={repository:'jgraham310/local-government',pr:2981,head,base,review:{head,independent:true,reviewer:'reviewer',url,observedAt:new Date(now).toISOString(),findings:[{id:'review-P2-1',severity:'P2'}]},acceptance:{issueDerived:true,negativeControls:true,deterministicTests:true,head,browserRequired:true,browserTerminalOutcome:'PASS',browserHead:head,browserEvidenceRef:browserRef,deploymentEvidenceRef:deploymentRef},p2Disposition:{head,issue,findingIds:['review-P2-1']}};
 const p2Issue={number:issue,state:'open',body:`review-P2-1 ${head} ${url}\nAcceptance test: named\nOwner: CTO\nBlocking-risk exclusion: reviewed`};
 const reviews=[{state:'APPROVED',commit_id:head,html_url:url,user:{login:'reviewer'},submitted_at:new Date(now).toISOString()}];
 const threads={nodes:[],pageInfo:{hasNextPage:false}};
-const baseInput={source:charter,live:charter,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest};
+const baseInput={source:charter,live:charter,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest,deploymentReceipt,deploymentDigest};
 const check=(override={})=>evaluateMerge({...baseInput,...override},now);
 assert.equal(check().allowed,true);
 assert.equal(check({state:{...state,records:{'cto:civicline':{...state.records['cto:civicline'],authorityBoundary:{allowedActions:['inspect','draft']}}}}}).reason,'authority_or_workstate');
@@ -29,6 +31,11 @@ assert.equal(check({reviews:[{...reviews[0],user:{login:'author'}}]}).reason,'ex
 assert.equal(check({reviews:[{...reviews[0],commit_id:base}]}).reason,'exact_head_review');
 assert.equal(check({reviews:[...reviews,{...reviews[0],state:'CHANGES_REQUESTED',submitted_at:new Date(now+1).toISOString()}]}).reason,'exact_head_review');
 assert.equal(check({browserDigest:'0'.repeat(64)}).reason,'acceptance_proof');
+assert.equal(check({deploymentDigest:'0'.repeat(64)}).reason,'acceptance_proof');
+assert.equal(check({deploymentReceipt:{...deploymentReceipt,head:base}}).reason,'acceptance_proof');
+assert.equal(check({browserReceipt:{...browserReceipt,imageDigest:`sha256:${'d'.repeat(64)}`}}).reason,'acceptance_proof');
+assert.equal(check({browserReceipt:{...browserReceipt,servingRevision:'older-revision'}}).reason,'acceptance_proof');
+assert.equal(check({state:{...state,records:{'cto:civicline':{...state.records['cto:civicline'],currentDeploymentEvidenceRef:'successor'}}}}).reason,'acceptance_proof');
 for(const severity of ['P0','P1']) assert.equal(check({proof:{...proof,review:{...proof.review,findings:[{id:'block',severity}]}}}).reason,'blocking_review_finding');
 assert.equal(check({proof:{...proof,review:{...proof.review,findings:[{id:'review-P2-1',severity:'P2',securityOrTenantRisk:true}]}}}).reason,'launch_critical_p2');
 assert.equal(check({pr:{...pr,head:{sha:base}}}).reason,'stale_or_invalid_head');
@@ -41,10 +48,10 @@ assert.equal(check({live:{...charter,boundedAuthority:{...charter.boundedAuthori
 assert.equal(check({state:{...state,records:{'cto:civicline':{status:'blocked',evidenceRefs:[]}}}}).reason,'authority_or_workstate');
 const fixture=mkdtempSync(join(tmpdir(),'civicline-merge-'));
 try {
-  const files=Object.fromEntries(['source','live','state','proof','browser'].map(n=>[n,join(fixture,`${n}.json`)]));
-  for (const [name,value] of Object.entries({source:charter,live:charter,state,proof,browser:browserReceipt}))
+  const files=Object.fromEntries(['source','live','state','proof','browser','deployment'].map(n=>[n,join(fixture,`${n}.json`)]));
+  for (const [name,value] of Object.entries({source:charter,live:charter,state,proof,browser:browserReceipt,deployment:deploymentReceipt}))
     writeFileSync(files[name],JSON.stringify(value));
-  writeFileSync(files.proof,JSON.stringify({...proof,acceptance:{...proof.acceptance,browserReceiptPath:files.browser}}));
+  writeFileSync(files.proof,JSON.stringify({...proof,acceptance:{...proof.acceptance,browserReceiptPath:files.browser,deploymentReceiptPath:files.deployment}}));
   const calls=[];
   const runner=(_bin,args)=>{
     calls.push(args);

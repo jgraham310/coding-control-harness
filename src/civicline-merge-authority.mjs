@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const REPO = 'jgraham310/local-government';
 const SHA = /^[a-f0-9]{40}$/;
+const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const defaultSource = '/Users/jasongraham/.openclaw/repos/henry-operating-system/agents/civicline-cto/CHARTER.json';
 const defaultLive = '/Users/jasongraham/.openclaw/workspace-civicline-cto/CHARTER.json';
 const defaultState = '/Users/jasongraham/.openclaw/workspace-cos/ops/execution-harness/work-state.json';
@@ -22,7 +23,7 @@ export function charterValid(c) {
     c.boundedAuthority?.merge===true && c.boundedAuthority?.production===false &&
     c.boundedAuthority?.customerData===false && !c.boundedAuthority?.prohibitedOperations?.includes('merge_green_pr');
 }
-export function evaluateMerge({source,live,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest},now=Date.now()) {
+export function evaluateMerge({source,live,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest,deploymentReceipt,deploymentDigest},now=Date.now()) {
   const record=state?.records?.['cto:civicline'];
   if (!charterValid(source) || !charterValid(live) || record?.status!=='active' ||
       !record.authorityBoundary?.allowedActions?.includes('merge_green_pr') ||
@@ -49,11 +50,19 @@ export function evaluateMerge({source,live,state,pr,checks,proof,p2Issue,reviews
   if (review.findings.some(f=>!['P0','P1','P2','P3'].includes(f.severity) || ['P0','P1'].includes(f.severity))) return {allowed:false,reason:'blocking_review_finding'};
   const browserRef=acceptance?.browserEvidenceRef;
   const browserEvidence=browserRef && record.evidenceRefs?.includes(browserRef) && state.evidence?.[browserRef];
+  const deploymentRef=acceptance?.deploymentEvidenceRef;
+  const deploymentEvidence=deploymentRef && deploymentRef===record.currentDeploymentEvidenceRef &&
+    record.evidenceRefs?.includes(deploymentRef) && state.evidence?.[deploymentRef];
   if (acceptance?.issueDerived!==true || acceptance?.negativeControls!==true || acceptance?.deterministicTests!==true ||
       acceptance?.head!==head || acceptance.browserRequired!==true ||
       acceptance.browserTerminalOutcome!=='PASS' || acceptance.browserHead!==head ||
       browserEvidence?.status!=='verified' || browserEvidence.artifact!==`sha256:${browserDigest}` ||
-      browserReceipt?.head!==head || browserReceipt?.terminalOutcome!=='PASS') return {allowed:false,reason:'acceptance_proof'};
+      deploymentEvidence?.status!=='verified' || deploymentEvidence.artifact!==`sha256:${deploymentDigest}` ||
+      deploymentReceipt?.head!==head || !DIGEST.test(deploymentReceipt?.imageDigest??'') ||
+      typeof deploymentReceipt?.servingRevision!=='string' || !deploymentReceipt.servingRevision.trim() ||
+      browserReceipt?.head!==head || browserReceipt?.terminalOutcome!=='PASS' ||
+      browserReceipt.imageDigest!==deploymentReceipt.imageDigest ||
+      browserReceipt.servingRevision!==deploymentReceipt.servingRevision) return {allowed:false,reason:'acceptance_proof'};
   const p2=review.findings.filter(f=>f.severity==='P2');
   if (p2.some(f=>f.blocksAcceptance || f.securityOrTenantRisk || f.dataLossRisk || f.rollbackRisk)) return {allowed:false,reason:'launch_critical_p2'};
   if (p2.length && (proof.p2Disposition?.head!==head ||
@@ -78,8 +87,11 @@ export function checkCurrent(prNumber,proofFile,{sourceFile=defaultSource,liveFi
   const browserBytes=fs.readFileSync(proof?.acceptance?.browserReceiptPath ?? '');
   const browserDigest=createHash('sha256').update(browserBytes).digest('hex');
   const browserReceipt=JSON.parse(browserBytes);
+  const deploymentBytes=fs.readFileSync(proof?.acceptance?.deploymentReceiptPath ?? '');
+  const deploymentDigest=createHash('sha256').update(deploymentBytes).digest('hex');
+  const deploymentReceipt=JSON.parse(deploymentBytes);
   const p2Issue=proof?.p2Disposition?.issue ? JSON.parse(command(['api',`repos/${REPO}/issues/${proof.p2Disposition.issue}`],runner)) : null;
-  return evaluateMerge({source,live,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest},now);
+  return evaluateMerge({source,live,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest,deploymentReceipt,deploymentDigest},now);
 }
 function main() {
   const [mode,number,proofFile]=process.argv.slice(2);
