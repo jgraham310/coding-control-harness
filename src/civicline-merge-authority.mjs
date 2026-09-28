@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Fail-closed exact-head CivicLine merge transport. No production operation. */
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -21,9 +22,11 @@ export function charterValid(c) {
     c.boundedAuthority?.merge===true && c.boundedAuthority?.production===false &&
     c.boundedAuthority?.customerData===false && !c.boundedAuthority?.prohibitedOperations?.includes('merge_green_pr');
 }
-export function evaluateMerge({source,live,state,pr,checks,proof,p2Issue},now=Date.now()) {
-  if (!charterValid(source) || !charterValid(live) || state?.records?.['cto:civicline']?.status!=='active' ||
-      !state.records['cto:civicline'].evidenceRefs?.includes('civicline-merge-staging-grant-20260928') ||
+export function evaluateMerge({source,live,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest},now=Date.now()) {
+  const record=state?.records?.['cto:civicline'];
+  if (!charterValid(source) || !charterValid(live) || record?.status!=='active' ||
+      !record.authorityBoundary?.allowedActions?.includes('merge_green_pr') ||
+      !record.evidenceRefs?.includes('civicline-merge-staging-grant-20260928') ||
       !state.evidence?.['civicline-merge-staging-grant-20260928']) return {allowed:false,reason:'authority_or_workstate'};
   const head=pr?.head?.sha, base=pr?.base?.sha;
   if (pr?.state!=='open' || pr.draft!==false || pr.mergeable!==true || !SHA.test(head??'') || !SHA.test(base??'') ||
@@ -33,12 +36,27 @@ export function evaluateMerge({source,live,state,pr,checks,proof,p2Issue},now=Da
   if (review?.head!==head || review.independent!==true || !review.url?.startsWith('https://github.com/') ||
       !Array.isArray(review.findings) || !Number.isFinite(Date.parse(review.observedAt)) ||
       Date.parse(review.observedAt)>now || now-Date.parse(review.observedAt)>30*60*1000) return {allowed:false,reason:'exact_head_review'};
+  const reviewerReviews=Array.isArray(reviews) ? reviews.filter(r=>r.user?.login===review.reviewer)
+    .sort((a,b)=>Date.parse(b.submitted_at)-Date.parse(a.submitted_at)) : [];
+  if (!Array.isArray(reviews) || reviews.length>=100 || !reviewerReviews.some((r,index)=>
+    index===0 &&
+    r.state==='APPROVED' && r.commit_id===head && r.html_url===review.url &&
+    r.user?.login && r.user.login===review.reviewer && r.user.login!==pr.user?.login &&
+    Number.isFinite(Date.parse(r.submitted_at)) && Date.parse(r.submitted_at)<=now &&
+    now-Date.parse(r.submitted_at)<=30*60*1000)) return {allowed:false,reason:'exact_head_review'};
+  if (!threads || !Array.isArray(threads.nodes) || threads.pageInfo?.hasNextPage!==false ||
+      threads.nodes.some(t=>t.isResolved!==true)) return {allowed:false,reason:'unresolved_review_threads'};
   if (review.findings.some(f=>!['P0','P1','P2','P3'].includes(f.severity) || ['P0','P1'].includes(f.severity))) return {allowed:false,reason:'blocking_review_finding'};
+  const browserRef=acceptance?.browserEvidenceRef;
+  const browserEvidence=browserRef && record.evidenceRefs?.includes(browserRef) && state.evidence?.[browserRef];
   if (acceptance?.issueDerived!==true || acceptance?.negativeControls!==true || acceptance?.deterministicTests!==true ||
-      acceptance?.head!==head || (acceptance.browserRequired && (acceptance.browserTerminalOutcome!=='PASS' || acceptance.browserHead!==head))) return {allowed:false,reason:'acceptance_proof'};
+      acceptance?.head!==head || acceptance.browserRequired!==true ||
+      acceptance.browserTerminalOutcome!=='PASS' || acceptance.browserHead!==head ||
+      browserEvidence?.status!=='verified' || browserEvidence.artifact!==`sha256:${browserDigest}` ||
+      browserReceipt?.head!==head || browserReceipt?.terminalOutcome!=='PASS') return {allowed:false,reason:'acceptance_proof'};
   const p2=review.findings.filter(f=>f.severity==='P2');
   if (p2.some(f=>f.blocksAcceptance || f.securityOrTenantRisk || f.dataLossRisk || f.rollbackRisk)) return {allowed:false,reason:'launch_critical_p2'};
-  if (p2.length && (proof.p2Disposition?.head!==head || proof.p2Disposition.reviewThreadsResolved!==true ||
+  if (p2.length && (proof.p2Disposition?.head!==head ||
       !Number.isInteger(proof.p2Disposition.issue) || p2Issue?.number!==proof.p2Disposition.issue ||
       p2Issue.state!=='open' || p2.some(f=>!proof.p2Disposition.findingIds?.includes(f.id) || !p2Issue.body?.includes(f.id)) ||
       !p2Issue.body?.includes(head) || !p2Issue.body?.includes(review.url) || !p2Issue.body?.includes('Acceptance test:') ||
@@ -48,11 +66,20 @@ export function evaluateMerge({source,live,state,pr,checks,proof,p2Issue},now=Da
 export function checkCurrent(prNumber,proofFile,{sourceFile=defaultSource,liveFile=defaultLive,stateFile=defaultState,runner=spawnSync,now=Date.now()}={}) {
   if (!Number.isInteger(prNumber)||prNumber<1) throw new Error('invalid PR number');
   const source=read(sourceFile),live=read(liveFile),state=read(stateFile),proof=read(proofFile);
-  if (!charterValid(source)||!charterValid(live)||!state.records?.['cto:civicline']?.evidenceRefs?.includes('civicline-merge-staging-grant-20260928')) return {allowed:false,reason:'authority_or_workstate'};
+  if (!charterValid(source)||!charterValid(live)||
+      !state.records?.['cto:civicline']?.authorityBoundary?.allowedActions?.includes('merge_green_pr')||
+      !state.records['cto:civicline'].evidenceRefs?.includes('civicline-merge-staging-grant-20260928')) return {allowed:false,reason:'authority_or_workstate'};
   const pr=JSON.parse(command(['api',`repos/${REPO}/pulls/${prNumber}`],runner));
   const checks=JSON.parse(command(['pr','checks',String(prNumber),'-R',REPO,'--json','name,bucket'],runner));
+  const reviews=JSON.parse(command(['api',`repos/${REPO}/pulls/${prNumber}/reviews?per_page=100`],runner));
+  const query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}pageInfo{hasNextPage}}}}}';
+  const threadResponse=JSON.parse(command(['api','graphql','-f',`query=${query}`,'-F','owner=jgraham310','-F','repo=local-government','-F',`number=${prNumber}`],runner));
+  const threads=threadResponse?.errors ? null : threadResponse?.data?.repository?.pullRequest?.reviewThreads;
+  const browserBytes=fs.readFileSync(proof?.acceptance?.browserReceiptPath ?? '');
+  const browserDigest=createHash('sha256').update(browserBytes).digest('hex');
+  const browserReceipt=JSON.parse(browserBytes);
   const p2Issue=proof?.p2Disposition?.issue ? JSON.parse(command(['api',`repos/${REPO}/issues/${proof.p2Disposition.issue}`],runner)) : null;
-  return evaluateMerge({source,live,state,pr,checks,proof,p2Issue},now);
+  return evaluateMerge({source,live,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest},now);
 }
 function main() {
   const [mode,number,proofFile]=process.argv.slice(2);
