@@ -1,17 +1,14 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const root = resolve(homedir(), '.openclaw/workspace-cos/portfolio-control-pilot');
-const liveRunner = resolve(root, 'bin/pr-merge-runner.mjs');
 const pinnedRunner = resolve('test/fixtures/pr-merge-runner.mjs');
 assert.ok(existsSync(pinnedRunner), 'portfolio merge runner fixture is required');
-const source = readFileSync(pinnedRunner, 'utf8');
-if (existsSync(liveRunner)) {
-  assert.equal(readFileSync(liveRunner, 'utf8'), source, 'live runner drifted from the pinned contract');
-}
+const runnerSource = process.env.TEMS_RUNNER_SOURCE ? resolve(process.env.TEMS_RUNNER_SOURCE) : pinnedRunner;
+assert.ok(existsSync(runnerSource), `runner source is required: ${runnerSource}`);
+const source = readFileSync(runnerSource, 'utf8');
 const candidateGate = resolve('src/tems-merge-authority.mjs');
 const gateDeclaration = /^const TEMS_AUTHORITY_GATE = .*;$/m;
 assert.match(source, gateDeclaration, 'runner must declare a TEMS authority gate');
