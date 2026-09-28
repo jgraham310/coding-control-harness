@@ -9,6 +9,7 @@ const ROOT = new URL('..', import.meta.url).pathname;
 const ALLOWLIST = join(ROOT, 'policy', 'auto-merge-allowlist.json');
 const TEMS_AUTHORITY_GATE = '/Users/jasongraham/.openclaw/repos/coding-control-harness/src/tems-merge-authority.mjs';
 const CIVICLINE_AUTHORITY_GATE = '/Users/jasongraham/.openclaw/repos/coding-control-harness/src/civicline-merge-authority.mjs';
+const CIVICLINE_GATE_SHA256 = '521fec9e0cb04d98eddfbb4f1e928c47569cc8d66cefd88b5fec4d3deceeab33';
 const TEMS_HOST_PARITY_TEST = '/Users/jasongraham/.openclaw/repos/coding-control-harness/test/live-portfolio-merge-runner.host.test.mjs';
 function arg(name) { const index = process.argv.indexOf(name); if (index === -1 || !process.argv[index + 1]) throw new Error(`${name} is required`); return process.argv[index + 1]; }
 function run(argv) { return execFileSync('gh', argv, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
@@ -85,7 +86,10 @@ function main() {
   const evidence = join(ROOT, 'evidence', 'pr-merge', repository.replace('/', '__'), `pr-${pr}`, `${head}.json`);
   const civicline = repository === 'jgraham310/local-government';
   const civiclineProof = civicline ? join(ROOT, 'evidence', 'merge-protocol', repository.replace('/', '__'), `pr-${pr}`, `${head}.json`) : null;
-  if (civicline) execFileSync('node', [CIVICLINE_AUTHORITY_GATE, 'check', pr, civiclineProof], { stdio: ['ignore', 'pipe', 'pipe'] });
+  if (civicline) {
+    if (sha256(readFileSync(CIVICLINE_AUTHORITY_GATE)) !== CIVICLINE_GATE_SHA256) throw new Error('installed CivicLine authority gate does not match reviewed candidate');
+    execFileSync('node', [CIVICLINE_AUTHORITY_GATE, 'check', pr, civiclineProof], { stdio: ['ignore', 'pipe', 'pipe'] });
+  }
   const authorization = civicline ? { digest: 'signal:1790601059903' } : authorizationFor(repository, pr, head);
   const review = civicline ? { path: civiclineProof, digest: sha256(canonical(JSON.parse(readFileSync(civiclineProof, 'utf8')))), reviewed_at: JSON.parse(readFileSync(civiclineProof, 'utf8')).review?.observedAt } : cleanReviewFor(repository, pr, head);
   const current = JSON.parse(run(['pr', 'view', pr, '--repo', repository, '--json', 'headRefOid,mergeStateStatus,isDraft,statusCheckRollup']));
@@ -108,9 +112,12 @@ function main() {
   if (unresolvedThreads) throw new Error(`PR has ${unresolvedThreads} unresolved active review thread(s)`);
   // Persist the full authorization/review decision before executing the
   // irreversible GitHub merge, so a failed merge call cannot erase evidence.
-  const decision = { schema_version: 2, repository, pr: Number(pr), head_sha: head, decision: 'approved-for-squash-merge', decided_at: new Date().toISOString(), executor: 'portfolio-controller', authorization_sha256: authorization.digest, review_evidence_sha256: review.digest, review_evidence_path: review.path, review_completed_at: review.reviewed_at, ...(repository === 'jgraham310/tems' ? { portfolio_review_clear_at: reviewClearAt } : {}), unresolved_active_review_threads: 0, ci: 'all-success', tems_canonical_host_status_at: hostStatusAt, branch_merge_state: 'CLEAN' };
+  const decision = { schema_version: 2, repository, pr: Number(pr), head_sha: head, decision: civicline ? 'merge-attempt-pending-final-gate' : 'approved-for-squash-merge', decided_at: new Date().toISOString(), executor: 'portfolio-controller', authorization_sha256: authorization.digest, review_evidence_sha256: review.digest, review_evidence_path: review.path, review_completed_at: review.reviewed_at, ...(repository === 'jgraham310/tems' ? { portfolio_review_clear_at: reviewClearAt } : {}), unresolved_active_review_threads: 0, ci: 'all-success', tems_canonical_host_status_at: hostStatusAt, branch_merge_state: 'CLEAN' };
   writeAtomic(evidence, decision);
-  run(['pr', 'merge', pr, '--repo', repository, '--squash', '--match-head-commit', head]);
+  if (civicline) {
+    if (sha256(readFileSync(CIVICLINE_AUTHORITY_GATE)) !== CIVICLINE_GATE_SHA256) throw new Error('installed CivicLine authority gate changed before merge');
+    execFileSync('node', [CIVICLINE_AUTHORITY_GATE, 'merge', pr, civiclineProof], { stdio: ['ignore', 'pipe', 'pipe'] });
+  } else run(['pr', 'merge', pr, '--repo', repository, '--squash', '--match-head-commit', head]);
   const record = { ...decision, merged_at: new Date().toISOString(), method: 'squash', outcome: 'merged' };
   writeAtomic(evidence, record);
   process.stdout.write(`${JSON.stringify(record)}\n`);

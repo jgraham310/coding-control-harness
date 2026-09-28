@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { acquireStateLock } from '../integrations/openclaw/execution-harness/state-lock.mjs';
 const REPO = 'jgraham310/local-government';
 const SHA = /^[a-f0-9]{40}$/;
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
@@ -93,15 +94,23 @@ export function checkCurrent(prNumber,proofFile,{sourceFile=defaultSource,liveFi
   const p2Issue=proof?.p2Disposition?.issue ? JSON.parse(command(['api',`repos/${REPO}/issues/${proof.p2Disposition.issue}`],runner)) : null;
   return evaluateMerge({source,live,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest,deploymentReceipt,deploymentDigest},now);
 }
+export function mergeCurrent(prNumber,proofFile,options={}) {
+  // Share the WorkState runtime lock across final admission and GitHub mutation.
+  // A transition cannot revoke or replace the selected deployment in this interval.
+  const release=acquireStateLock(options.stateFile??defaultState);
+  try {
+    const verdict=checkCurrent(prNumber,proofFile,options);
+    if (!verdict.allowed) return verdict;
+    command(['pr','merge',String(prNumber),'-R',REPO,'--squash','--match-head-commit',verdict.head],options.runner??spawnSync);
+    return {status:'merge_command_succeeded',pr:prNumber,head:verdict.head};
+  } finally { release(); }
+}
 function main() {
   const [mode,number,proofFile]=process.argv.slice(2);
   if (!['check','merge'].includes(mode)||!proofFile) throw new Error('usage: civicline-merge-authority.mjs <check|merge> <PR> <proof.json>');
-  const verdict=checkCurrent(Number(number),proofFile);
-  if (!verdict.allowed) { process.stdout.write(`${JSON.stringify(verdict)}\n`); process.exitCode=2; return; }
-  if (mode==='check') { process.stdout.write(`${JSON.stringify(verdict)}\n`); return; }
-  // GitHub enforces exact head at the mutation boundary, including races after the readback.
-  command(['pr','merge',String(number),'-R',REPO,'--squash','--match-head-commit',verdict.head]);
-  process.stdout.write(`${JSON.stringify({status:'merge_command_succeeded',pr:Number(number),head:verdict.head})}\n`);
+  const verdict=mode==='merge' ? mergeCurrent(Number(number),proofFile) : checkCurrent(Number(number),proofFile);
+  process.stdout.write(`${JSON.stringify(verdict)}\n`);
+  if (verdict.allowed===false) process.exitCode=2;
 }
 if (process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   try { main(); } catch(e) { process.stderr.write(`${e.message}\n`); process.exitCode=2; }

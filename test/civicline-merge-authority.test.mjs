@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkCurrent, evaluateMerge } from '../src/civicline-merge-authority.mjs';
+import { checkCurrent, evaluateMerge, mergeCurrent } from '../src/civicline-merge-authority.mjs';
+import { acquireStateLock } from '../integrations/openclaw/execution-harness/state-lock.mjs';
 const head='a'.repeat(40),base='b'.repeat(40),now=Date.now(), issue=3000;
 const deploymentReceipt={head,imageDigest:`sha256:${'c'.repeat(64)}`,servingRevision:'clerk-uat--0000003'};
 const deploymentDigest=createHash('sha256').update(JSON.stringify(deploymentReceipt)).digest('hex');
@@ -68,6 +69,18 @@ try {
   assert.equal(checkCurrent(pr.number,files.proof,options).allowed,true);
   assert.equal(calls.some(args=>args[1]==='graphql'),true,'live review threads must be queried');
   assert.equal(calls.some(args=>args[1]?.endsWith('/reviews?per_page=100')),true,'live reviews must be queried');
+  const lockedRunner=(_bin,args)=>{
+    if (args[0]==='pr' && args[1]==='merge') {
+      assert.throws(()=>acquireStateLock(files.state),/State is busy/, 'WorkState must remain locked through merge');
+      assert.equal(args.includes('--match-head-commit'),true);
+      assert.equal(args.at(-1),head);
+      return {status:0,stdout:'merged',stderr:''};
+    }
+    return runner(_bin,args);
+  };
+  assert.equal(mergeCurrent(pr.number,files.proof,{...options,runner:lockedRunner}).status,'merge_command_succeeded');
+  const releaseAfterMerge=acquireStateLock(files.state);
+  releaseAfterMerge();
   writeFileSync(files.state,JSON.stringify({...state,records:{'cto:civicline':{...state.records['cto:civicline'],authorityBoundary:{allowedActions:['inspect']}}}}));
   calls.length=0;
   assert.equal(checkCurrent(pr.number,files.proof,options).reason,'authority_or_workstate');
