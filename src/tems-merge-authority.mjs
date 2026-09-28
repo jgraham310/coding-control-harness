@@ -15,9 +15,9 @@ export function assertTemsMergeAuthority(repository, charter) {
   }
 }
 
-export function assertCurrentTemsMergeAuthority(repository) {
+export function assertCurrentTemsMergeAuthority(repository, charterPath = sourceCharter) {
   if (repository !== TEMS_REPOSITORY) return;
-  assertTemsMergeAuthority(repository, JSON.parse(readFileSync(sourceCharter, 'utf8')));
+  assertTemsMergeAuthority(repository, JSON.parse(readFileSync(charterPath, 'utf8')));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
