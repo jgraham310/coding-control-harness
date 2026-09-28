@@ -57,6 +57,35 @@ assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)
     '--pr', String(pr), '--head', head], { encoding: 'utf8' });
   assert.equal(denied.status, 1, 'missing exact-head protocol proof must deny');
   assert.equal(existsSync(receipt), false, 'protocol denial must not write merge decision');
+  // Isolate the subsequent host-status gate after the authority gate has been tested above.
+  writeFileSync(shim, '');
+  const review = join(fixture, `evidence/codex-review/jgraham310__tems/pr-${pr}/${head}.json`);
+  mkdirSync(dirname(review), { recursive: true });
+  writeFileSync(review, JSON.stringify({ repository: 'jgraham310/tems', pr, head_sha: head,
+    outcome: 'clean', reviewed_at: new Date().toISOString() }));
+  const bin = join(fixture, 'fake-bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'gh'), `#!/usr/bin/env node
+const head = process.env.TEMS_TEST_HEAD;
+if (process.argv[2] === 'pr') {
+  process.stdout.write(JSON.stringify({ headRefOid: head, isDraft: false, mergeStateStatus: 'CLEAN',
+    statusCheckRollup: [{ name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' }] }));
+} else {
+  const mode = process.env.TEMS_TEST_HOST_STATUS;
+  const created_at = mode === 'stale' ? new Date(Date.now() - 3600000).toISOString() : new Date().toISOString();
+  process.stdout.write(JSON.stringify({ sha: mode === 'wrong-head' ? '0'.repeat(40) : head,
+    statuses: mode === 'absent' ? [] : [{ context: 'tems/canonical-host-integration',
+      state: mode === 'failure' ? 'failure' : 'success', created_at }] }));
+}
+`, { mode: 0o755 });
+  for (const mode of ['absent', 'failure', 'stale', 'wrong-head']) {
+    const result = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
+      '--pr', String(pr), '--head', head], { encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEMS_TEST_HEAD: head, TEMS_TEST_HOST_STATUS: mode } });
+    assert.equal(result.status, 1, `${mode} canonical-host status must deny`);
+    assert.match(result.stderr, /canonical-host integration status/);
+    assert.equal(existsSync(receipt), false, `${mode} denial must not write a merge decision`);
+  }
   console.log('live portfolio merge runner source/deployed charter denial: passed');
 } finally {
   rmSync(fixture, { recursive: true, force: true });

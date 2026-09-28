@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import { execFileSync } from 'node:child_process';
 import {
   addEvidence as addControlEvidence,
   setStatus as setControlStatus,
@@ -70,6 +71,7 @@ const DEFAULT_RETRY_DEADLINE_MS = 2 * 60 * 60 * 1000;
 const MAX_RETRY_ATTEMPTS_DEFAULT = 3;
 const KERNEL_LOCK_STALE_MS = 15 * 60 * 1000;
 const EVIDENCE_PREFIX = /^[0-9a-f]{7,40}$/i;
+const TEMS_REPOSITORY = 'jgraham310/tems';
 const ACCEPTANCE_HEADINGS = Object.freeze([
   '## Engineering Acceptance Contract',
   '## Machine-Executable UAT',
@@ -145,6 +147,34 @@ function isFuture(value) {
 
 function isExpired(expiryAt, now = Date.now()) {
   return Date.parse(expiryAt) <= now;
+}
+
+function githubApi(pathname) {
+  return JSON.parse(execFileSync('gh', ['api', pathname], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+}
+
+export function verifyTemsRemoteChecks(repository, pr, head, observedAt, fetch = githubApi) {
+  if (repository !== TEMS_REPOSITORY || !Number.isInteger(Number(pr)) || Number(pr) < 1 ||
+      !/^[a-f0-9]{40}$/.test(head ?? '')) throw new Error('invalid TEMS PR verification target');
+  const pull = fetch(`repos/${repository}/pulls/${pr}`);
+  const checks = fetch(`repos/${repository}/commits/${head}/check-runs?per_page=100`);
+  const status = fetch(`repos/${repository}/commits/${head}/status`);
+  const runs = checks?.check_runs;
+  const host = Array.isArray(status?.statuses) ? status.statuses
+    .filter((entry) => entry.context === 'tems/canonical-host-integration')
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] : null;
+  const hostAt = Date.parse(host?.created_at);
+  const now = Date.parse(observedAt);
+  if (pull?.state !== 'open' || pull.head?.sha !== head ||
+      !Array.isArray(runs) || runs.length < 1 || checks.total_count !== runs.length ||
+      runs.some((run) => run.head_sha !== head || run.status !== 'completed' || run.conclusion !== 'success') ||
+      status?.sha !== head || host?.state !== 'success' ||
+      !Number.isFinite(now) || !Number.isFinite(hostAt) || hostAt > now ||
+      now - hostAt > 30 * 60 * 1000) {
+    throw new Error('independent exact-head TEMS CI and canonical-host verification failed');
+  }
+  return { source: 'github-api', repository, pr: Number(pr), head_sha: head,
+    checks_count: runs.length, host_status_created_at: host.created_at, verified_at: observedAt };
 }
 
 function sortByCreatedAt(entries) {
@@ -958,6 +988,8 @@ function handlePrObserve(state, manifest, request) {
           cap: 1,
         });
       }
+      const remoteVerification = repository === TEMS_REPOSITORY
+        ? verifyTemsRemoteChecks(repository, item.pr, head, request.now) : null;
       item.head = head;
       prAppendEvidence(item, {
         type: 'verification_passed',
@@ -966,7 +998,7 @@ function handlePrObserve(state, manifest, request) {
         commit: head,
       });
       setControlStatus(item, 'verified', request.now);
-      return operationSuccess(state, request, { workItemId: item.id, status: item.status, head: item.head });
+      return operationSuccess(state, request, { workItemId: item.id, status: item.status, head: item.head, remoteVerification });
     }
 
     if (event === 'checks_failed') {

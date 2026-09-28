@@ -41,6 +41,7 @@ export function assertTemsProtocolEvidence(repository, pr, head, evidence, kerne
   }
   const operation = kernelState?.operations?.find((entry) => entry.id === evidence.kernel_operation_id);
   const item = kernelState?.prItems?.find((entry) => entry.id === evidence.work_item_id);
+  const remote = operation?.result?.remoteVerification;
   const verification = item?.evidence?.find((entry) => entry.type === 'verification_passed' &&
     entry.commit === head && entry.observedAt === evidence.observedAt);
   if (kernelState?.schema !== 'coding_control_kernel_state/v1' ||
@@ -51,6 +52,11 @@ export function assertTemsProtocolEvidence(repository, pr, head, evidence, kerne
       operation.now !== evidence.observedAt || operation.result?.ok !== true ||
       operation.result?.status !== 'verified' || operation.result?.head !== head ||
       operation.result?.workItemId !== evidence.work_item_id ||
+      remote?.source !== 'github-api' || remote.repository !== repository ||
+      remote.pr !== Number(pr) || remote.head_sha !== head ||
+      !Number.isInteger(remote.checks_count) || remote.checks_count < 1 ||
+      remote.verified_at !== evidence.observedAt ||
+      !Number.isFinite(Date.parse(remote.host_status_created_at)) ||
       !item || item.repository !== repository || Number(item.pr) !== Number(pr) ||
       item.head !== head || item.status !== 'verified' || !verification) {
     throw new Error('TEMS merge protocol evidence has no matching kernel-issued verification');

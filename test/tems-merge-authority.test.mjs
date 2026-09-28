@@ -36,7 +36,10 @@ try {
   const operation = { id: valid.kernel_operation_id, operation: 'pr-observe', status: 'applied',
     repository: valid.repository, payload: { repository: valid.repository, workItemId: valid.work_item_id,
       event: 'checks_passed', head }, now: valid.observedAt,
-    result: { ok: true, status: 'verified', head, workItemId: valid.work_item_id } };
+    result: { ok: true, status: 'verified', head, workItemId: valid.work_item_id,
+      remoteVerification: { source: 'github-api', repository: valid.repository, pr: 654,
+        head_sha: head, checks_count: 2, host_status_created_at: valid.observedAt,
+        verified_at: valid.observedAt } } };
   const item = { id: valid.work_item_id, repository: valid.repository, pr: valid.pr, head,
     status: 'verified', evidence: [{ type: 'verification_passed', commit: head, observedAt: valid.observedAt }] };
   const state = { schema: 'coding_control_kernel_state/v1', operations: [operation], prItems: [item] };
@@ -58,6 +61,9 @@ try {
   }
   writeFileSync(proof, JSON.stringify(valid));
   writeFileSync(statePath, JSON.stringify({ ...state, operations: [{ ...operation, payload: { ...operation.payload, head: '0'.repeat(40) } }] }));
+  assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof, statePath), /kernel-issued/);
+  writeFileSync(statePath, JSON.stringify({ ...state, operations: [{ ...operation,
+    result: { ...operation.result, remoteVerification: null } }] }));
   assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof, statePath), /kernel-issued/);
 } finally { rmSync(dir, { recursive: true, force: true }); }
 console.log('TEMS bounded merge authority tests: passed');

@@ -6,7 +6,9 @@ import { spawnSync } from 'node:child_process';
 const receiptPath = 'test/fixtures/tems-host-integration-receipt.json';
 const inputs = [
   'package.json',
+  'src/coding-kernel.mjs',
   'src/tems-merge-authority.mjs',
+  'test/coding-kernel.test.mjs',
   'test/tems-merge-authority.test.mjs',
   'test/live-portfolio-merge-runner.test.mjs',
   'test/live-portfolio-merge-runner.host.test.mjs',

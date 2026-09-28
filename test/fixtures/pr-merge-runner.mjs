@@ -36,6 +36,19 @@ function cleanReviewFor(repository, pr, head) {
   if (review.repository !== repository || Number(review.pr) !== Number(pr) || review.head_sha !== head || review.outcome !== 'clean') throw new Error('current-head Codex review is not clean');
   return { path, digest: sha256(canonical(review)), reviewed_at: review.reviewed_at };
 }
+function currentTemsHostStatus(repository, head) {
+  const response = JSON.parse(run(['api', `repos/${repository}/commits/${head}/status`]));
+  const statuses = response.statuses;
+  const matching = Array.isArray(statuses) ? statuses.filter((entry) => entry.context === 'tems/canonical-host-integration') : [];
+  matching.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const latest = matching[0];
+  const observed = Date.parse(latest?.created_at);
+  if (response.sha !== head || !latest || latest.state !== 'success' ||
+      !Number.isFinite(observed) || observed > Date.now() || Date.now() - observed > 30 * 60 * 1000) {
+    throw new Error('current exact-head TEMS canonical-host integration status is missing, stale, or failed');
+  }
+  return latest.created_at;
+}
 function main() {
   const repository = arg('--repo'); const pr = arg('--pr'); const head = arg('--head');
   if (repository === 'jgraham310/tems') {
@@ -50,11 +63,12 @@ function main() {
   if (current.isDraft || current.mergeStateStatus !== 'CLEAN') throw new Error(`PR is not mechanically mergeable: draft=${current.isDraft} merge=${current.mergeStateStatus}`);
   const failed = (current.statusCheckRollup ?? []).filter((check) => check.status !== 'COMPLETED' || check.conclusion !== 'SUCCESS');
   if (failed.length) throw new Error(`PR has non-success checks: ${failed.map((check) => check.name ?? check.context).join(',')}`);
+  const hostStatusAt = repository === 'jgraham310/tems' ? currentTemsHostStatus(repository, head) : null;
   const unresolvedThreads = activeReviewThreads(repository, pr);
   if (unresolvedThreads) throw new Error(`PR has ${unresolvedThreads} unresolved active review thread(s)`);
   // Persist the full authorization/review decision before executing the
   // irreversible GitHub merge, so a failed merge call cannot erase evidence.
-  const decision = { schema_version: 2, repository, pr: Number(pr), head_sha: head, decision: 'approved-for-squash-merge', decided_at: new Date().toISOString(), executor: 'portfolio-controller', authorization_sha256: authorization.digest, review_evidence_sha256: review.digest, review_evidence_path: review.path, review_completed_at: review.reviewed_at, unresolved_active_review_threads: 0, ci: 'all-success', branch_merge_state: 'CLEAN' };
+  const decision = { schema_version: 2, repository, pr: Number(pr), head_sha: head, decision: 'approved-for-squash-merge', decided_at: new Date().toISOString(), executor: 'portfolio-controller', authorization_sha256: authorization.digest, review_evidence_sha256: review.digest, review_evidence_path: review.path, review_completed_at: review.reviewed_at, unresolved_active_review_threads: 0, ci: 'all-success', tems_canonical_host_status_at: hostStatusAt, branch_merge_state: 'CLEAN' };
   writeAtomic(evidence, decision);
   run(['pr', 'merge', pr, '--repo', repository, '--squash', '--delete-branch']);
   const record = { ...decision, merged_at: new Date().toISOString(), method: 'squash', outcome: 'merged' };
