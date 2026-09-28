@@ -68,8 +68,13 @@ export function assertCurrentTemsMergeAuthority(repository, charterPath = source
   assertTemsMergeAuthority(repository, JSON.parse(readFileSync(charterPath, 'utf8')));
   assertTemsMergeAuthority(repository, JSON.parse(readFileSync(deployedPath, 'utf8')));
   if (!evidencePath) throw new Error('current exact-head TEMS merge protocol evidence is missing or stale');
-  assertTemsProtocolEvidence(repository, pr, head, JSON.parse(readFileSync(evidencePath, 'utf8')),
-    JSON.parse(readFileSync(statePath, 'utf8')));
+  let evidence;
+  try { evidence = JSON.parse(readFileSync(evidencePath, 'utf8')); }
+  catch (error) {
+    if (error.code === 'ENOENT') throw new Error('current exact-head TEMS merge protocol evidence is missing or stale');
+    throw error;
+  }
+  assertTemsProtocolEvidence(repository, pr, head, evidence, JSON.parse(readFileSync(statePath, 'utf8')));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

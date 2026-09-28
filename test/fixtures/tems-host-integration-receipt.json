@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "gate": "candidate-runner-contract-only",
-  "observedAt": "2026-09-28T03:51:09.176Z",
+  "observedAt": "2026-09-28T12:40:55.276Z",
   "hashes": {
     "package.json": "637ce2c8550bd83c90e4215fc854c6786b770d35938c827f004e9c7697d08107",
     "src/coding-kernel.mjs": "41318f0e569e95c7ebced733c3d2561ca8cfe86f2e7fdc4544b92b5049489e87",
-    "src/tems-merge-authority.mjs": "dd7a82ef0167ca8b45ac49e8a662e175f6a458b82db9883fcdcfe00eda41bf3c",
+    "src/tems-merge-authority.mjs": "e07de0fdddc9ba2a9bedea98f1bcfc1fc473461356ab0e526f1515b9de0221a4",
     "test/coding-kernel.test.mjs": "1c1c3da2dea1037728999082494c34f60e82de5c97aa78f4f6e0c4a4006d8d5b",
-    "test/tems-merge-authority.test.mjs": "429ab240c6390ab8d353de5987a140c1c9dfa2134f503740ec87c0d96bd77896",
+    "test/tems-merge-authority.test.mjs": "5a279b1b6b14dd7bdbaf49d0eed04db01261987c0f1db775231948692ee5ddba",
     "test/live-portfolio-merge-runner.test.mjs": "5e4df915826838d9af01a8fea5394a7673d2bd0d20044d19eb29506a808bcc8d",
     "test/live-portfolio-merge-runner.host.test.mjs": "d9770d5a552b31c55402208562d1ff91c930311d7fc6326bcfe70f0cdd293bf3",
     "test/fixtures/pr-merge-runner.mjs": "03fa0152d9b2487d124d71e4af91b188bcc992f64e69e08421f3701f0becbaad",
