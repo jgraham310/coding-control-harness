@@ -39,8 +39,8 @@ assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)
   }));
   const allowed = { agentId: 'tems-cto', mode: 'routine', repositories: ['jgraham310/tems'],
     autonomousOperations: ['merge_green_pr'], protocolRequired: ['merge_green_pr'],
-    boundedAuthority: { merge: true, prohibitedOperations: [] } };
-  const revoked = { ...allowed, boundedAuthority: { merge: false, prohibitedOperations: ['merge_green_pr'] } };
+    productionAuthority: false, boundedAuthority: { merge: true, production: false, prohibitedOperations: [] } };
+  const revoked = { ...allowed, boundedAuthority: { merge: false, production: false, prohibitedOperations: ['merge_green_pr'] } };
   for (const revokedPath of [sourceCharter, deployedCharter]) {
     writeFileSync(sourceCharter, JSON.stringify(revokedPath === sourceCharter ? revoked : allowed));
     writeFileSync(deployedCharter, JSON.stringify(revokedPath === deployedCharter ? revoked : allowed));

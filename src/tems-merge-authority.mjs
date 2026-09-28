@@ -13,7 +13,9 @@ export function assertTemsMergeAuthority(repository, charter) {
       !charter.repositories?.includes(repository) ||
       !charter.autonomousOperations?.includes('merge_green_pr') ||
       !charter.protocolRequired?.includes('merge_green_pr') ||
+      charter.productionAuthority !== false ||
       charter.boundedAuthority?.merge !== true ||
+      charter.boundedAuthority?.production !== false ||
       charter.boundedAuthority?.prohibitedOperations?.includes('merge_green_pr')) {
     throw new Error('TEMS autonomous merge is prohibited by bounded authority');
   }

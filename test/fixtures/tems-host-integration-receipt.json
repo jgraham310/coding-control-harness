@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "gate": "canonical-host-runner-presence-parity-revocation",
+  "observedAt": "2026-09-28T02:18:36.525Z",
+  "hashes": {
+    "src/tems-merge-authority.mjs": "d01f7d8a8f63def8933b8fbd6222c521e94b6dce4e1603a558a9c110d3f855c0",
+    "test/tems-merge-authority.test.mjs": "3d4a7b83b0e2e7512c687cdf02d5c8e5d34895bcd50745a66da0f7e0f4956ffe",
+    "test/live-portfolio-merge-runner.test.mjs": "023ab5332fa13ab15516e073c18cc685326dbd04b7826543d506d801eeb21c4d",
+    "test/live-portfolio-merge-runner.host.test.mjs": "9183b3c904186857a875f2f5c26dab9c9d73436f056a53e6263039ab20c01702",
+    "test/fixtures/pr-merge-runner.mjs": "36a7bdb19dbd0076703d9d06bbc8c23e88ba119df0f1413ee9522b75bfe4fd15"
+  }
+}
