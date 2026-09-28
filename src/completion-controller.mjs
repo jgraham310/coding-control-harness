@@ -32,6 +32,10 @@ export function validateLane(lane) {
 }
 
 export function classifyObservation(observation = {}) {
+  // A detected error must be triaged before pane activity or completion claims
+  // can advance the lane. A non-blocking hook fault can coexist with execution.
+  if (text(observation.laneError)) return "lane_error";
+  if (observation.lastCommand?.status === "rejected") return "command_rejected";
   if (observation.completedEvidence === true) return "completed";
   if (observation.blockedReason) return "blocked";
   if (observation.pane === "executing") return "executing";
@@ -39,7 +43,6 @@ export function classifyObservation(observation = {}) {
   if (observation.pane === "waiting_review") return "awaiting_review";
   if (observation.pane === "idle_prompt") return "idle_prompt";
   if (observation.pane === "exited") return "process_exited";
-  if (observation.lastCommand?.status === "rejected") return "command_rejected";
   return "unknown";
 }
 
@@ -49,6 +52,12 @@ export function reconcileLane(lane, observation, { now = new Date().toISOString(
   if (TERMINAL.has(lane.state)) return { state: lane.state, action: "none", reason: "terminal_lane" };
   if (Date.parse(lane.deadlineAt) <= Date.parse(now)) return { state: "blocked", action: "hold", reason: "deadline_exceeded" };
   const observed = classifyObservation(observation);
+  if (observed === "lane_error") {
+    return { state: "recovering", action: "triage_error", reason: text(observation.laneError) };
+  }
+  if (observed === "command_rejected" && observation.pane === "executing") {
+    return { state: "recovering", action: "triage_error", reason: "command_rejected" };
+  }
   if (observed === "completed") return { state: "completed", action: "verify_completion", reason: "completion_evidence_observed" };
   if (observed === "blocked") return { state: "blocked", action: "hold", reason: text(observation.blockedReason) };
   if (ACTIVE.has(observed)) return { state: observed, action: "heartbeat", reason: "lane_active" };
@@ -73,6 +82,9 @@ export function applyDecision(lane, decision, { now = new Date().toISOString() }
     next.state = "executing";
     next.retry.attempts += 1;
     next.lastDispatch = { at: now, argvDigest: decision.actionDigest, reason: decision.reason };
+  } else if (decision.action === "triage_error") {
+    next.state = "recovering";
+    next.lastError = { at: now, reason: decision.reason };
   } else if (decision.action === "heartbeat") {
     next.state = decision.state;
     next.lastHeartbeatAt = now;
