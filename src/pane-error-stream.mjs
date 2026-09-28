@@ -11,20 +11,25 @@ let row = 1;
 let column = 1;
 let utf8Bytes = [];
 let utf8Expected = 0;
+let lastBase = '';
+let lastBaseWidth = 0;
 const paneWidth = Number(process.argv[2] ?? 80);
 if (!Number.isInteger(paneWidth) || paneWidth < 1) throw new Error('pane-error-stream requires a positive pane width');
-function boundary() { segment = ''; matched = false; }
+function boundary() { segment = ''; matched = false; lastBase = ''; lastBaseWidth = 0; }
 function glyphWidth(char) {
   if (/\p{Mark}/u.test(char)) return 0;
-  if (/[\u1100-\u115f\u2329-\u232a\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]|\p{Extended_Pictographic}/u.test(char)) return 2;
+  if (/[\u1100-\u115f\u2329-\u232a\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]|\p{Emoji_Presentation}/u.test(char)) return 2;
   return 1;
 }
 function append(char) {
-  const width = glyphWidth(char);
+  let width = glyphWidth(char);
+  if (char === '\ufe0f' && lastBaseWidth === 1 && /\p{Emoji}/u.test(lastBase)) { width = 1; lastBaseWidth = 2; }
+  if (char === '\ufe0e' && lastBaseWidth === 2 && /\p{Emoji}/u.test(lastBase)) { width = -1; lastBaseWidth = 1; }
   if (width && (column > paneWidth || (width > 1 && column + width - 1 > paneWidth))) { row++; column = 1; boundary(); }
   if (segment.length >= 4096) return;
   segment += char;
-  column += width;
+  column = Math.max(1, column + width);
+  if (!/\p{Mark}/u.test(char)) { lastBase = char; lastBaseWidth = width; }
   if (!matched && detectPaneError(segment)) {
     process.stdout.write('hook_module_not_found\n');
     matched = true;

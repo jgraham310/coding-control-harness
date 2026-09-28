@@ -57,6 +57,10 @@ assert.equal(execFileSync('node', [streamFilter], { input: 'éError: Cannot find
 assert.equal(execFileSync('node', [streamFilter], { input: 'é\rError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'CR repaint after Unicode prefix remains observable');
 assert.equal(execFileSync('node', [streamFilter], { input: '漢\x1b[2DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'wide glyph advances two visual columns before cursor-left repaint');
 assert.equal(execFileSync('node', [streamFilter], { input: '漢\x1b[1DError: Cannot find module x', encoding: 'utf8' }), '', 'wide glyph prefix survives a short cursor-left move');
+assert.equal(execFileSync('node', [streamFilter], { input: '©\x1b[1DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'default-text pictograph occupies one cell before cursor-left repaint');
+assert.equal(execFileSync('node', [streamFilter], { input: '©️\x1b[2DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'emoji variation selector expands a text pictograph to two cells');
+assert.equal(execFileSync('node', [streamFilter], { input: '⌚\x1b[2DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'default-emoji symbol retains two-cell width');
+assert.equal(execFileSync('node', [streamFilter], { input: '⌚︎\x1b[1DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'text variation selector narrows a default-emoji symbol to one cell');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
