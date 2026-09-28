@@ -5,7 +5,17 @@ import { detectPaneError } from './completion-controller.mjs';
 
 let pending = '';
 function accept(line) {
-  if (detectPaneError(line)) process.stdout.write('hook_module_not_found\n');
+  // pipe-pane receives terminal bytes, not capture-pane's rendered text.
+  // Cursor repositioning starts a new visual segment; color/erase/title
+  // controls must not hide a start-anchored error from the classifier.
+  const rendered = line
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-9;?]*[HfGd]/g, '\n')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\x9b[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\r/g, '\n')
+    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
+  if (detectPaneError(rendered)) process.stdout.write('hook_module_not_found\n');
 }
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => {

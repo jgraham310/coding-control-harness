@@ -30,6 +30,7 @@ fs.chmodSync(gh, 0o755);
 const harness = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../integrations/openclaw/execution-harness/harness.mjs');
 const streamFilter = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/pane-error-stream.mjs');
 assert.equal(execFileSync('node', [streamFilter], { input: "secret=not-an-error\nError: Cannot find module '/deleted/hook.js'\n", encoding: 'utf8' }), 'hook_module_not_found\n', 'stream retains only bounded error markers');
+assert.equal(execFileSync('node', [streamFilter], { input: "A prior Error: Cannot find module is only prose\n\x1b[31mError: Cannot find module '/deleted/hook.js'\x1b[0m\nold prompt\r\x1b[2KError: Cannot find module '/deleted/hook.js'\n", encoding: 'utf8' }), 'hook_module_not_found\nhook_module_not_found\n', 'colored and cursor-repainted terminal errors become bounded markers without accepting prose');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
