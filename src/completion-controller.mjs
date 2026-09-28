@@ -10,7 +10,7 @@ import crypto from "node:crypto";
 export const COMPLETION_CONTROLLER_SCHEMA = "completion_controller/v1";
 const ACTIVE = new Set(["executing", "awaiting_ci", "awaiting_review"]);
 const TERMINAL = new Set(["completed", "blocked", "failed"]);
-const RECOVERABLE_FAILURES = new Set(["idle_prompt", "command_rejected", "process_exited", "lease_expired"]);
+const RECOVERABLE_FAILURES = new Set(["idle_prompt", "command_rejected", "runtime_error", "process_exited", "lease_expired"]);
 
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const text = (value) => typeof value === "string" ? value.trim() : "";
@@ -34,16 +34,18 @@ export function validateLane(lane) {
 export function classifyObservation(observation = {}) {
   if (observation.completedEvidence === true) return "completed";
   if (observation.blockedReason) return "blocked";
+  // Terminal/error evidence wins over a stale active pane label.
+  if (observation.lastCommand?.status === "rejected") return "command_rejected";
+  if (observation.lastCommand?.status === "error" || observation.error) return "runtime_error";
+  if (observation.pane === "exited") return "process_exited";
+  if (observation.pane === "idle_prompt") return "idle_prompt";
   if (observation.pane === "executing") return "executing";
   if (observation.pane === "waiting_ci") return "awaiting_ci";
   if (observation.pane === "waiting_review") return "awaiting_review";
-  if (observation.pane === "idle_prompt") return "idle_prompt";
-  if (observation.pane === "exited") return "process_exited";
-  if (observation.lastCommand?.status === "rejected") return "command_rejected";
   return "unknown";
 }
 
-export function reconcileLane(lane, observation, { now = new Date().toISOString() } = {}) {
+export function reconcileLane(lane, observation, { now = new Date().toISOString(), registeredReviewActions = [] } = {}) {
   const validation = validateLane(lane);
   if (!validation.valid) return { state: "blocked", action: "hold", reason: "invalid_lane_contract", errors: validation.errors };
   if (TERMINAL.has(lane.state)) return { state: lane.state, action: "none", reason: "terminal_lane" };
@@ -53,10 +55,25 @@ export function reconcileLane(lane, observation, { now = new Date().toISOString(
   if (observed === "blocked") return { state: "blocked", action: "hold", reason: text(observation.blockedReason) };
   if (ACTIVE.has(observed)) return { state: observed, action: "heartbeat", reason: "lane_active" };
   if (RECOVERABLE_FAILURES.has(observed)) {
-    if (lane.retry.attempts >= lane.retry.maxAttempts) return { state: "blocked", action: "hold", reason: "retry_budget_exhausted", observed };
+    // Detection is an immediate recover-or-hold gate, never a backlog heartbeat.
+    // An implementer cannot certify its own candidate by redispatching a
+    // self-review prompt. Review recovery needs a distinct registered actor,
+    // exact head, and executable argv before any retry is possible.
+    const approvedReview = registeredReviewActions.some((entry) => entry?.approved === true
+      && text(entry.id) === text(lane.nextAction?.registrationId)
+      && entry.reviewer === lane.nextAction?.reviewer
+      && entry.headSha === lane.headSha
+      && entry.actionDigest === digest(lane.nextAction?.argv));
+    if (lane.reviewRequired && (lane.nextAction?.kind !== "independent_review"
+      || !text(lane.nextAction.reviewer) || lane.nextAction.reviewer === lane.owner
+      || !/^[0-9a-f]{40}$/i.test(text(lane.headSha))
+      || lane.nextAction.headSha !== lane.headSha || !approvedReview)) {
+      return { state: "blocked", action: "hold", reason: "independent_review_action_unregistered", observed, priority: "immediate" };
+    }
+    if (lane.retry.attempts >= lane.retry.maxAttempts) return { state: "blocked", action: "hold", reason: "retry_budget_exhausted", observed, priority: "immediate" };
     return {
       state: "recovering", action: "redispatch_registered_action", reason: observed,
-      observed, attempt: lane.retry.attempts + 1,
+      observed, priority: "immediate", attempt: lane.retry.attempts + 1,
       argv: [...lane.nextAction.argv], actionDigest: digest(lane.nextAction.argv),
     };
   }
@@ -99,6 +116,7 @@ export function completionReceipt(lane, observation, decision, { now = new Date(
     state: decision.state,
     action: decision.action,
     reason: decision.reason,
+    priority: decision.priority ?? "routine",
     observationDigest: digest(observation),
     actionDigest: decision.actionDigest ?? null,
     retryAttempt: decision.attempt ?? lane.retry?.attempts ?? 0,

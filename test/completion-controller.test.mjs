@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { applyDecision, completionReceipt, reconcileLane } from "../src/completion-controller.mjs";
 
 const lane = {
@@ -23,6 +24,26 @@ assert.equal(decision.reason, "retry_budget_exhausted");
 decision = reconcileLane(lane, { lastCommand: { status: "rejected" } }, { now: at });
 assert.equal(decision.action, "redispatch_registered_action");
 assert.equal(decision.reason, "command_rejected");
+assert.equal(decision.priority, "immediate");
+
+const reviewLane = { ...lane, owner: "claude", headSha: "2bb4952623c9e4623a77b3ca7e0449e9a8bddb10", reviewRequired: true };
+decision = reconcileLane(reviewLane, { pane: "executing", error: "MODULE_NOT_FOUND" }, { now: at });
+assert.equal(decision.action, "hold", "a stale executing label cannot hide a runtime error");
+assert.equal(decision.reason, "independent_review_action_unregistered");
+assert.equal(decision.observed, "runtime_error");
+assert.equal(decision.priority, "immediate");
+assert.equal(applyDecision(reviewLane, decision, { now: at }).state, "blocked");
+assert.equal(completionReceipt(reviewLane, { error: "MODULE_NOT_FOUND" }, decision, { now: at }).priority, "immediate");
+
+const registeredReview = { ...reviewLane, nextAction: { kind: "independent_review", registrationId: "review-2712", reviewer: "codex", headSha: reviewLane.headSha, argv: ["codex", "review", reviewLane.headSha] } };
+const approvedReviewAction = { id: "review-2712", approved: true, reviewer: "codex", headSha: reviewLane.headSha, actionDigest: crypto.createHash("sha256").update(JSON.stringify(registeredReview.nextAction.argv)).digest("hex") };
+assert.equal(reconcileLane(registeredReview, { pane: "idle_prompt" }, { now: at }).reason, "independent_review_action_unregistered", "a self-declared action is not registered approval");
+decision = reconcileLane(registeredReview, { pane: "idle_prompt" }, { now: at, registeredReviewActions: [approvedReviewAction] });
+assert.equal(decision.action, "redispatch_registered_action");
+assert.equal(decision.priority, "immediate");
+assert.deepEqual(decision.argv, registeredReview.nextAction.argv);
+assert.equal(reconcileLane({ ...registeredReview, nextAction: { ...registeredReview.nextAction, reviewer: "claude" } }, { pane: "idle_prompt" }, { now: at, registeredReviewActions: [approvedReviewAction] }).action, "hold");
+assert.equal(reconcileLane({ ...registeredReview, nextAction: { ...registeredReview.nextAction, headSha: "a".repeat(40) } }, { pane: "idle_prompt" }, { now: at, registeredReviewActions: [approvedReviewAction] }).action, "hold");
 
 decision = reconcileLane(lane, { pane: "executing" }, { now: at });
 assert.equal(decision.action, "heartbeat");
