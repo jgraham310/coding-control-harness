@@ -346,11 +346,47 @@ function unseenPaneOutput(previous, current) {
   if (prefix) return current.lines.slice(prefix);
   return current.lines;
 }
+function panePipeActive(pane) {
+  try { return execFileSync("tmux", ["display-message", "-p", "-t", pane, "#{pane_pipe}"], { encoding: "utf8", timeout: 5000 }).trim() === "1"; }
+  catch { return false; }
+}
+function rearmPaneStream(item) {
+  const snapshot = paneSnapshot(item);
+  if (!snapshot) fail(`Cannot rearm #${item.issue}; the attached pane could not be captured for a fresh-output baseline.`);
+  const existing = item.dispatch.paneStream;
+  if (existing?.pane === item.dispatch.pane && panePipeActive(item.dispatch.pane)) {
+    try { return { snapshot, stream: { ...existing, offset: fs.statSync(existing.path).size } }; }
+    catch { fail(`Cannot rearm #${item.issue}; the pane output stream is unavailable.`); }
+  }
+  if (panePipeActive(item.dispatch.pane)) fail(`Cannot rearm #${item.issue}; the pane already has another output pipe.`);
+  const streamPath = `${stateFile}.${item.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.${Date.now()}.pane-output`;
+  try {
+    fs.closeSync(fs.openSync(streamPath, "wx", 0o600));
+    const quoted = `'${streamPath.replace(/'/g, "'\\''")}'`;
+    const node = `'${process.execPath.replace(/'/g, "'\\''")}'`;
+    const filter = `'${path.resolve(here, "../../../src/pane-error-stream.mjs").replace(/'/g, "'\\''")}'`;
+    execFileSync("tmux", ["pipe-pane", "-O", "-o", "-t", item.dispatch.pane, `${node} ${filter} >> ${quoted}`], { timeout: 5000 });
+    if (!panePipeActive(item.dispatch.pane)) throw new Error("output pipe did not attach");
+    return { snapshot, stream: { pane: item.dispatch.pane, path: streamPath, offset: 0 } };
+  } catch (error) {
+    try { fs.unlinkSync(streamPath); } catch {}
+    fail(`Cannot rearm #${item.issue}; pane output stream failed: ${error.message}`);
+  }
+}
 function liveLaneError(item) {
   if (item.dispatch?.status !== "attached") return { error: "", snapshot: null };
   // Explicit adapter error is preferred; otherwise inspect the actual executor
   // pane. A failed capture is handled by dispatchHealth, not claimed as proof.
   if (item.dispatch.laneError) return { error: String(item.dispatch.laneError).trim(), snapshot: null };
+  const stream = item.dispatch.paneStream;
+  if (stream) {
+    try {
+      if (stream.pane !== item.dispatch.pane || !panePipeActive(stream.pane)) throw new Error("output pipe detached");
+      const output = fs.readFileSync(stream.path);
+      if (output.length < stream.offset) throw new Error("output stream truncated");
+      return { error: detectPaneError(output.subarray(stream.offset).toString("utf8")), snapshot: null, streamOffset: output.length };
+    } catch { return { error: "pane_output_monitor_unavailable", snapshot: null }; }
+  }
   const snapshot = paneSnapshot(item);
   return { error: snapshot ? detectPaneError(unseenPaneOutput(item.dispatch.paneBaseline, snapshot).join("\n")) : "", snapshot };
 }
@@ -598,9 +634,9 @@ if (command === "status") {
   }
   const at = now();
   if (item.dispatch?.errorHold && to !== "blocked") {
-    const snapshot = paneSnapshot(item);
-    if (!snapshot) fail(`Cannot rearm #${item.issue}; the attached pane could not be captured for a fresh-output baseline.`);
+    const { snapshot, stream } = rearmPaneStream(item);
     item.dispatch.paneBaseline = snapshot;
+    item.dispatch.paneStream = stream;
   }
   item.phase = to;
   if (item.dispatch?.errorHold && to !== "blocked") {
@@ -682,9 +718,17 @@ if (command === "status") {
   if (observed.cwd !== worktree) fail(`tmux pane cwd mismatch for ${item.id}: expected ${worktree}, observed ${observed.cwd}. Do not attach a different lane.`);
   const at = now();
   item.tmuxSession = session;
-  item.dispatch = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at, errorHold: null, laneError: null };
-  item.dispatch.paneBaseline = paneSnapshot(item);
+  const heldError = Boolean(item.dispatch.errorHold);
+  const attachment = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at, laneError: null };
+  const baseline = paneSnapshot({ dispatch: attachment });
+  if (!baseline) fail(`Cannot attach #${item.issue}; the pane could not be captured for a fresh-output baseline.`);
+  if (heldError) {
+    const { stream } = rearmPaneStream({ ...item, dispatch: attachment });
+    attachment.paneStream = stream;
+  }
+  item.dispatch = { ...attachment, errorHold: null, paneBaseline: baseline };
   item.phase = "implementing";
+  item.blocker = null;
   item.heartbeatDueAt = deadline;
   item.nextActionDueAt = deadline;
   item.lastEvidence = { at, detail: evidence };
@@ -787,8 +831,9 @@ if (command === "status") {
     // Error evidence outranks pane activity, claimed completion, and automatic
     // recovery. A persisted hold makes repeated watch ticks side-effect free.
     if (item.dispatch?.errorHold) continue;
-    const { error: laneError, snapshot } = liveLaneError(item);
+    const { error: laneError, snapshot, streamOffset } = liveLaneError(item);
     if (snapshot && process.argv.includes("--apply")) item.dispatch.paneBaseline = snapshot;
+    if (streamOffset !== undefined && process.argv.includes("--apply")) item.dispatch.paneStream.offset = streamOffset;
     if (classifyObservation({ laneError, blockedReason: item.blocker }) === "lane_error") {
       const evidence = `development_lane_error:${laneError}`;
       findings.push({ issue: item.issue, phase: item.phase, kind: "development_lane_error", evidence, nextAction: "Triage the executor error and explicitly rearm this lane after repair." });
