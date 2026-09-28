@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { loadReviewRegistration } from "../src/review-registration.mjs";
 import { applyDecision, completionReceipt, reconcileLane } from "../src/completion-controller.mjs";
 
 const lane = {
@@ -17,7 +18,7 @@ let next = applyDecision(lane, decision, { now: at });
 assert.equal(next.retry.attempts, 1);
 assert.equal(next.state, "executing");
 
-decision = reconcileLane({ ...next, retry: { attempts: 2, maxAttempts: 2 } }, { pane: "idle_prompt" }, { now: at });
+decision = reconcileLane({ ...next, retry: { attempts: 2, maxAttempts: 2 } }, { pane: "idle_prompt", lastCommand: { at: "2026-09-23T10:01:00.000Z" } }, { now: at });
 assert.equal(decision.action, "hold");
 assert.equal(decision.reason, "retry_budget_exhausted");
 
@@ -35,15 +36,21 @@ assert.equal(decision.priority, "immediate");
 assert.equal(applyDecision(reviewLane, decision, { now: at }).state, "blocked");
 assert.equal(completionReceipt(reviewLane, { error: "MODULE_NOT_FOUND" }, decision, { now: at }).priority, "immediate");
 
-const registeredReview = { ...reviewLane, nextAction: { kind: "independent_review", registrationId: "review-2712", reviewer: "codex", headSha: reviewLane.headSha, argv: ["codex", "review", reviewLane.headSha] } };
-const approvedReviewAction = { id: "review-2712", approved: true, reviewer: "codex", headSha: reviewLane.headSha, actionDigest: crypto.createHash("sha256").update(JSON.stringify(registeredReview.nextAction.argv)).digest("hex") };
-assert.equal(reconcileLane(registeredReview, { pane: "idle_prompt" }, { now: at }).reason, "independent_review_action_unregistered", "a self-declared action is not registered approval");
-decision = reconcileLane(registeredReview, { pane: "idle_prompt" }, { now: at, registeredReviewActions: [approvedReviewAction] });
+const registeredReview = { ...reviewLane, repository: "jgraham310/local-government", issue: 2712, implementerLogin: "jgraham310", nextAction: { kind: "independent_review", registrationId: "review-2712", reviewer: "codex", headSha: reviewLane.headSha, argv: ["codex", "review", "--commit", reviewLane.headSha] } };
+const record = { schema: "independent-review-registration/v1", laneId: registeredReview.id, id: "review-2712", reviewer: "codex", headSha: reviewLane.headSha, actionDigest: crypto.createHash("sha256").update(JSON.stringify(registeredReview.nextAction.argv)).digest("hex"), implementerLogin: registeredReview.implementerLogin };
+const comment = { id: 7, user: { login: "independent-reviewer" }, author_association: "COLLABORATOR", body: `independent-review-registration/v1 ${JSON.stringify(record)}` };
+assert.equal(reconcileLane(registeredReview, { pane: "idle_prompt" }, { now: at, reviewRegistration: { ...record, registrar: "independent-reviewer" } }).action, "hold", "caller-computable approval cannot bypass authentication");
+assert.equal(loadReviewRegistration(registeredReview, { client: () => [{ ...comment, author_association: "NONE" }] }), null, "untrusted GitHub actor cannot register review");
+const authenticated = loadReviewRegistration(registeredReview, { client: () => [comment] });
+assert.equal(authenticated.githubCommentId, 7);
+decision = reconcileLane(registeredReview, { pane: "idle_prompt" }, { now: at, reviewRegistration: authenticated });
 assert.equal(decision.action, "redispatch_registered_action");
 assert.equal(decision.priority, "immediate");
 assert.deepEqual(decision.argv, registeredReview.nextAction.argv);
-assert.equal(reconcileLane({ ...registeredReview, nextAction: { ...registeredReview.nextAction, reviewer: "claude" } }, { pane: "idle_prompt" }, { now: at, registeredReviewActions: [approvedReviewAction] }).action, "hold");
-assert.equal(reconcileLane({ ...registeredReview, nextAction: { ...registeredReview.nextAction, headSha: "a".repeat(40) } }, { pane: "idle_prompt" }, { now: at, registeredReviewActions: [approvedReviewAction] }).action, "hold");
+assert.equal(reconcileLane({ ...registeredReview, nextAction: { ...registeredReview.nextAction, reviewer: "claude" } }, { pane: "idle_prompt" }, { now: at, reviewRegistration: authenticated }).action, "hold");
+assert.equal(reconcileLane({ ...registeredReview, nextAction: { ...registeredReview.nextAction, headSha: "a".repeat(40) } }, { pane: "idle_prompt" }, { now: at, reviewRegistration: authenticated }).action, "hold");
+assert.equal(reconcileLane(registeredReview, { completedEvidence: true, lastCommand: { status: "error" } }, { now: at }).reason, "independent_review_action_unregistered", "error outranks stale completion");
+assert.equal(reconcileLane({ ...registeredReview, nextAction: { ...registeredReview.nextAction, argv: ["codex", "review", reviewLane.headSha] } }, { pane: "idle_prompt" }, { now: at, reviewRegistration: authenticated }).action, "hold", "a prompt is not an exact-commit executable review");
 
 decision = reconcileLane(lane, { pane: "executing" }, { now: at });
 assert.equal(decision.action, "heartbeat");

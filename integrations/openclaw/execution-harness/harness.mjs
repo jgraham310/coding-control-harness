@@ -13,6 +13,9 @@ import { fileURLToPath } from "node:url";
 import { handoffRecord } from "./deterministic-engine.mjs";
 import { emptyRuntime, registerWorkState, validateRuntime, workStateContext } from "./work-state.mjs";
 import { acquireStateLock } from "./state-lock.mjs";
+import { reconcileCompletionLanes } from "./completion-watch.mjs";
+import { validateLane } from "../../../src/completion-controller.mjs";
+import { loadReviewRegistration } from "../../../src/review-registration.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultState = process.env.EXECUTION_HARNESS_STATE || path.join(here, "execution-state.json");
@@ -484,6 +487,36 @@ const state = validate(normalize(load(stateFile)));
 
 if (command === "status") {
   print({ updatedAt: state.updatedAt, portfolio: state.portfolio, releasePolicy: state.releasePolicy, lanes: state.lanes, pendingEvents: state.events.filter((e) => e.notification === "pending") });
+} else if (command === "register-completion-lane") {
+  const contractPath = arg("--contract");
+  const expectedVersion = Number(arg("--expected-work-version"));
+  if (!contractPath || !Number.isInteger(expectedVersion)) fail("register-completion-lane requires --contract and --expected-work-version.");
+  let contract;
+  try { contract = JSON.parse(fs.readFileSync(contractPath, "utf8")); }
+  catch (error) { fail(`Cannot read completion contract: ${error.message}`); }
+  const validation = validateLane(contract);
+  if (!validation.valid || !contract.workStateId || !contract.repository || !Number.isInteger(contract.issue)) fail(`Invalid completion contract: ${validation.errors.join(", ")}`);
+  const priorCompletion = state.completionLanes?.find((candidate) => candidate.id === contract.id);
+  if (priorCompletion && (priorCompletion.state !== "blocked" || priorCompletion.headSha !== contract.headSha
+      || !(priorCompletion.workStateVersion < expectedVersion))) fail(`Completion lane ${contract.id} already exists without a newer grant.`);
+  if (!state.portfolio.repositories.some((candidate) => candidate.repository === contract.repository)) fail(`Repository ${contract.repository} is outside the managed portfolio.`);
+  let workRuntime;
+  try { workRuntime = JSON.parse(fs.readFileSync(workStatePath(), "utf8")); validateRuntime(workRuntime); }
+  catch (error) { fail(`Canonical WorkState unavailable: ${error.message}`); }
+  const work = workRuntime.records[contract.workStateId];
+  if (!work || work.version !== expectedVersion || work.phase !== "active" || !work.evidenceRefs?.length || !workRuntime.evidence[work.evidenceRefs.at(-1)]) fail("Canonical WorkState lacks a current active evidence-backed grant at the expected version.");
+  const head = execFileSync("git", ["-C", contract.worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const dirty = execFileSync("git", ["-C", contract.worktree, "status", "--porcelain"], { encoding: "utf8" }).trim();
+  if (head !== contract.headSha || dirty) fail("Completion worktree is dirty or not at the contracted exact head.");
+  if (contract.reviewRequired && !loadReviewRegistration(contract)) fail("No authenticated independent review action is registered for this exact head.");
+  state.completionLanes ??= [];
+  const registered = { ...contract, state: "executing", registeredAt: now(), workStateVersion: expectedVersion,
+    retry: { ...contract.retry, attempts: Math.max(contract.retry.attempts, priorCompletion?.retry?.attempts ?? 0) },
+    history: priorCompletion?.history ?? contract.history ?? [] };
+  if (priorCompletion) state.completionLanes[state.completionLanes.indexOf(priorCompletion)] = registered;
+  else state.completionLanes.push(registered);
+  save(stateFile, state);
+  print({ registered: contract.id, headSha: head, workStateId: contract.workStateId, workStateVersion: expectedVersion });
 } else if (command === "register-lane") {
   const id = arg("--id");
   const repository = arg("--repository");
@@ -744,6 +777,16 @@ if (command === "status") {
   const at = now();
   const timestamp = Date.parse(at);
   const findings = portfolioFindings(state, at, process.argv.includes("--apply"));
+  findings.push(...reconcileCompletionLanes(state, { at, apply: process.argv.includes("--apply"), save: (updated) => save(stateFile, updated), logDir: path.join(path.dirname(stateFile), "completion-logs"),
+    authorize: (completion) => {
+      try {
+        const runtime = JSON.parse(fs.readFileSync(workStatePath(), "utf8"));
+        validateRuntime(runtime);
+        const record = runtime.records[completion.workStateId];
+        return record?.phase === "active" && record.version === completion.workStateVersion
+          && !!runtime.evidence[record.evidenceRefs?.at(-1)];
+      } catch { return false; }
+    } }));
   for (const item of state.lanes.filter((candidate) => candidate.active)) {
     const unhealthyDispatch = dispatchHealth(item);
     if (unhealthyDispatch) {
@@ -931,5 +974,5 @@ if (command === "status") {
   if (mode === "immediate" && !override) missing.push("active_explicit_critical_incident_authorization");
   print({ eligible: missing.length === 0 && verificationMissing.length === 0, window: mode === "immediate" ? "explicit critical-incident override" : "02:00 America/New_York", mode, authorization: override ? { authorizedAt: override.authorizedAt, expiresAt: override.expiresAt, evidence: override.authorization } : null, missing, verificationMissing, candidate });
 } else {
-  fail("Usage: harness.mjs <status|register-lane|operational-report|transition|observe|record-review|dispatch-development|attach-development|recover-development|handoff-development|upgrade-development-contract|authorize-immediate-release|verify|record-contract-check|watch|ack-events|release-gate> [options]");
+  fail("Usage: harness.mjs <status|register-completion-lane|register-lane|operational-report|transition|observe|record-review|dispatch-development|attach-development|recover-development|handoff-development|upgrade-development-contract|authorize-immediate-release|verify|record-contract-check|watch|ack-events|release-gate> [options]");
 }

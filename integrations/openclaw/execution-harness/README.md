@@ -341,3 +341,9 @@ Four patterns are incorporated without importing a second orchestration system:
   classifies a change as security-sensitive, production-impacting, or disputed.
   The classifier decides whether review is needed; it does not invoke a model
   on ordinary work.
+
+## Bounded completion-lane recovery
+
+Register an exact-head completion contract with `harness.mjs register-completion-lane --contract <json> --expected-work-version <n> --work-state <canonical-runtime> --state <execution-state>`. Registration requires a clean worktree at `headSha`, an active evidence-backed WorkState at that version, and (for `reviewRequired`) an authenticated GitHub issue comment beginning `independent-review-registration/v1 ` followed by JSON containing `schema`, `laneId`, `id`, `reviewer`, `headSha`, `actionDigest`, and `implementerLogin`. The action digest is SHA-256 of JSON-encoded `nextAction.argv`; independent Codex review uses `codex review --commit <headSha>`.
+
+The live `watch --apply` path captures the named tmux pane, lets command/runtime errors outrank stale completion, and holds a review-required failure if registration is absent. It rechecks the current WorkState before recovery. Under the execution-state lock it persists an idempotent retry claim before launching argv, and writes review logs under the execution-state directory, not the candidate worktree. A held lane needs a new evidence-backed WorkState grant and explicit registration; repeated watch passes do not redispatch it.

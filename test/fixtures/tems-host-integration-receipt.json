@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "gate": "candidate-runner-contract-only",
-  "observedAt": "2026-09-28T14:28:12.633Z",
+  "observedAt": "2026-09-28T20:12:31.324Z",
   "hashes": {
-    "package.json": "ddcfe1f06b314b62aa6c0ebaf7397b9f91aada6f33bc8588bcbd2eaeacef7c24",
+    "package.json": "a5781aac7b522ec0dd395c4c50aa5700e369365e562ae1dfac573fa79423fe2e",
     "src/coding-kernel.mjs": "41318f0e569e95c7ebced733c3d2561ca8cfe86f2e7fdc4544b92b5049489e87",
     "src/tems-merge-authority.mjs": "e07de0fdddc9ba2a9bedea98f1bcfc1fc473461356ab0e526f1515b9de0221a4",
     "src/civicline-merge-authority.mjs": "cfbabd43297da4fa3787969b68516ef315c8206c736f5ce5d077f9fbac5806db",
