@@ -9,14 +9,22 @@ let mode = 'text';
 let csi = '';
 let row = 1;
 let column = 1;
+let utf8Bytes = [];
+let utf8Expected = 0;
 const paneWidth = Number(process.argv[2] ?? 80);
 if (!Number.isInteger(paneWidth) || paneWidth < 1) throw new Error('pane-error-stream requires a positive pane width');
 function boundary() { segment = ''; matched = false; }
-function append(byte) {
-  if (column > paneWidth) { row++; column = 1; boundary(); }
+function glyphWidth(char) {
+  if (/\p{Mark}/u.test(char)) return 0;
+  if (/[\u1100-\u115f\u2329-\u232a\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]|\p{Extended_Pictographic}/u.test(char)) return 2;
+  return 1;
+}
+function append(char) {
+  const width = glyphWidth(char);
+  if (width && (column > paneWidth || (width > 1 && column + width - 1 > paneWidth))) { row++; column = 1; boundary(); }
   if (segment.length >= 4096) return;
-  segment += String.fromCharCode(byte);
-  column++;
+  segment += char;
+  column += width;
   if (!matched && detectPaneError(segment)) {
     process.stdout.write('hook_module_not_found\n');
     matched = true;
@@ -24,6 +32,22 @@ function append(byte) {
 }
 process.stdin.on('data', (chunk) => {
   for (const byte of chunk) {
+    if (mode === 'text' && utf8Expected) {
+      if (byte >= 0x80 && byte <= 0xbf) {
+        utf8Bytes.push(byte);
+        if (utf8Bytes.length === utf8Expected) {
+          const char = Buffer.from(utf8Bytes).toString('utf8');
+          if (char === '\u009b') { mode = 'csi'; csi = ''; }
+          else append(char);
+          utf8Bytes = [];
+          utf8Expected = 0;
+        }
+        continue;
+      }
+      append('\ufffd');
+      utf8Bytes = [];
+      utf8Expected = 0;
+    }
     if (mode === 'osc') {
       if (byte === 0x07) mode = 'text';
       else if (byte === 0x1b) mode = 'osc-esc';
@@ -75,6 +99,8 @@ process.stdin.on('data', (chunk) => {
     if (byte === 0x9b) { mode = 'csi'; csi = ''; continue; }
     if (byte === 0x0d || byte === 0x0a) { if (byte === 0x0a) row++; column = 1; boundary(); continue; }
     if (byte === 0x08) { segment = segment.slice(0, -1); column = Math.max(1, Math.min(column, paneWidth) - 1); continue; }
-    if (byte >= 0x20 && byte <= 0x7e) append(byte);
+    if (byte >= 0xc2 && byte <= 0xf4) { utf8Bytes = [byte]; utf8Expected = byte <= 0xdf ? 2 : byte <= 0xef ? 3 : 4; continue; }
+    if (byte >= 0x80) { append('\ufffd'); continue; }
+    if (byte >= 0x20 && byte <= 0x7e) append(String.fromCharCode(byte));
   }
 });

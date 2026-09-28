@@ -53,6 +53,10 @@ assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) 
 assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[78DError: Cannot find module x', encoding: 'utf8' }), '', 'pending-wrap cursor-left stopping at column two retains prefix');
 assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[5C\x1b[79DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'cursor-right at pane edge clamps before subsequent cursor-left');
 assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[1BError: Cannot find module x', encoding: 'utf8' }), '', 'vertical cursor move cancels pending wrap without inventing an anchored error');
+assert.equal(execFileSync('node', [streamFilter], { input: 'éError: Cannot find module x\n❯ Error: Cannot find module x', encoding: 'utf8' }), '', 'visible Unicode prefixes do not become anchored errors');
+assert.equal(execFileSync('node', [streamFilter], { input: 'é\rError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'CR repaint after Unicode prefix remains observable');
+assert.equal(execFileSync('node', [streamFilter], { input: '漢\x1b[2DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'wide glyph advances two visual columns before cursor-left repaint');
+assert.equal(execFileSync('node', [streamFilter], { input: '漢\x1b[1DError: Cannot find module x', encoding: 'utf8' }), '', 'wide glyph prefix survives a short cursor-left move');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
