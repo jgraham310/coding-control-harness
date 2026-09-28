@@ -16,6 +16,7 @@ import { acquireStateLock } from "./state-lock.mjs";
 import { reconcileCompletionLanes } from "./completion-watch.mjs";
 import { validateLane } from "../../../src/completion-controller.mjs";
 import { loadReviewRegistration } from "../../../src/review-registration.mjs";
+import { hasCompletionGrant } from "./completion-grant.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultState = process.env.EXECUTION_HARNESS_STATE || path.join(here, "execution-state.json");
@@ -504,7 +505,7 @@ if (command === "status") {
   try { workRuntime = JSON.parse(fs.readFileSync(workStatePath(), "utf8")); validateRuntime(workRuntime); }
   catch (error) { fail(`Canonical WorkState unavailable: ${error.message}`); }
   const work = workRuntime.records[contract.workStateId];
-  if (!work || work.version !== expectedVersion || work.phase !== "active" || !work.evidenceRefs?.length || !workRuntime.evidence[work.evidenceRefs.at(-1)]) fail("Canonical WorkState lacks a current active evidence-backed grant at the expected version.");
+  if (!hasCompletionGrant(workRuntime, contract, expectedVersion)) fail("Canonical WorkState lacks an exact-lane retry_safe grant at the expected version.");
   const head = execFileSync("git", ["-C", contract.worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const dirty = execFileSync("git", ["-C", contract.worktree, "status", "--porcelain"], { encoding: "utf8" }).trim();
   if (head !== contract.headSha || dirty) fail("Completion worktree is dirty or not at the contracted exact head.");
@@ -782,9 +783,7 @@ if (command === "status") {
       try {
         const runtime = JSON.parse(fs.readFileSync(workStatePath(), "utf8"));
         validateRuntime(runtime);
-        const record = runtime.records[completion.workStateId];
-        return record?.phase === "active" && record.version === completion.workStateVersion
-          && !!runtime.evidence[record.evidenceRefs?.at(-1)];
+        return hasCompletionGrant(runtime, completion);
       } catch { return false; }
     } }));
   for (const item of state.lanes.filter((candidate) => candidate.active)) {

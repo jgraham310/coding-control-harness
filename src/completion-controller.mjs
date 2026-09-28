@@ -11,7 +11,7 @@ import { isAuthenticatedReviewRegistration } from "./review-registration.mjs";
 export const COMPLETION_CONTROLLER_SCHEMA = "completion_controller/v1";
 const ACTIVE = new Set(["executing", "awaiting_ci", "awaiting_review"]);
 const TERMINAL = new Set(["completed", "blocked", "failed"]);
-const RECOVERABLE_FAILURES = new Set(["idle_prompt", "command_rejected", "runtime_error", "process_exited", "lease_expired"]);
+const RECOVERABLE_FAILURES = new Set(["command_rejected", "runtime_error", "lease_expired"]);
 
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const text = (value) => typeof value === "string" ? value.trim() : "";
@@ -34,9 +34,9 @@ export function validateLane(lane) {
 
 export function classifyObservation(observation = {}) {
   // Failure evidence outranks an aggregate completion flag and pane label.
+  if (observation.blockedReason) return "blocked";
   if (observation.lastCommand?.status === "rejected") return "command_rejected";
   if (observation.lastCommand?.status === "error" || observation.error) return "runtime_error";
-  if (observation.blockedReason) return "blocked";
   if (observation.pane === "exited") return "process_exited";
   if (observation.completedEvidence === true) return "completed";
   if (observation.pane === "idle_prompt") return "idle_prompt";
@@ -55,7 +55,9 @@ export function reconcileLane(lane, observation, { now = new Date().toISOString(
   if (observed === "completed") return { state: "completed", action: "verify_completion", reason: "completion_evidence_observed" };
   if (observed === "blocked") return { state: "blocked", action: "hold", reason: text(observation.blockedReason) };
   if (ACTIVE.has(observed)) return { state: observed, action: "heartbeat", reason: "lane_active" };
+  if (observed === "idle_prompt" || observed === "process_exited") return { state: "blocked", action: "hold", reason: "outcome_unverified", observed, priority: "immediate" };
   if (RECOVERABLE_FAILURES.has(observed)) {
+    if (!text(observation.lastCommand?.evidenceRef)) return { state: "blocked", action: "hold", reason: "unverified_failure_evidence", observed, priority: "immediate" };
     if (lane.lastDispatch?.observationDigest === digest(observation)) return { state: lane.state, action: "none", reason: "attempt_already_claimed", observed };
     // Detection is an immediate recover-or-hold gate, never a backlog heartbeat.
     // An implementer cannot certify its own candidate by redispatching a

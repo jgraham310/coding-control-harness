@@ -6,16 +6,35 @@ import os from "node:os";
 import { applyDecision, completionReceipt, reconcileLane, validateLane } from "../../../src/completion-controller.mjs";
 import { loadReviewRegistration } from "../../../src/review-registration.mjs";
 
-export function observeCompletionLane(lane, { capture = (name) => execFileSync("tmux", ["capture-pane", "-p", "-t", `=${name}`, "-S", "-80"], { encoding: "utf8", timeout: 5000 }) } = {}) {
+export function observeCompletionLane(lane, {
+  capture = (name) => execFileSync("tmux", ["capture-pane", "-p", "-t", `=${name}`, "-S", "-80"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }),
+  listSessions = () => execFileSync("tmux", ["list-sessions", "-F", "#{session_name}"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }),
+  processStatus = (pid) => execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }),
+} = {}) {
   let pane = "executing";
-  let error = null;
+  let blockedReason = lane.blockedReason ?? null;
+  if (lane.lastDispatch?.pid) {
+    try {
+      const command = processStatus(lane.lastDispatch.pid).trim();
+      if (!command || (lane.reviewRequired && (!command.includes("codex") || !command.includes(lane.headSha))))
+        blockedReason = "dispatched_process_unverifiable";
+      return { pane, lastCommand: null, completedEvidence: false, blockedReason };
+    } catch {
+      return { pane: "exited", lastCommand: null, completedEvidence: false, blockedReason: "dispatched_process_finished_requires_verification" };
+    }
+  }
   try {
     const output = capture(lane.sessionName);
-    const last = output.trimEnd().split("\n").slice(-12);
-    if (last.some((line) => /(?:^|\s)(?:MODULE_NOT_FOUND|command not found|Permission denied|Error:)/.test(line))) error = last.filter((line) => /(?:^|\s)(?:MODULE_NOT_FOUND|command not found|Permission denied|Error:)/.test(line)).at(-1);
-    else if (/^(?:\$|%|>)\s*$/.test(last.at(-1) ?? "")) pane = "idle_prompt";
-  } catch { pane = "exited"; }
-  return { pane, error, lastCommand: lane.lastCommand ?? null, completedEvidence: lane.completedEvidence === true, blockedReason: lane.blockedReason ?? null };
+    const last = output.trimEnd().split("\n").at(-1) ?? "";
+    if (/^(?:\$|%|>)\s*$/.test(last)) pane = "idle_prompt";
+  } catch {
+    try {
+      const sessions = listSessions().trimEnd().split("\n");
+      if (!sessions.includes(lane.sessionName)) pane = "exited";
+      else blockedReason = "pane_observation_failed";
+    } catch { blockedReason = "pane_observation_failed"; }
+  }
+  return { pane, lastCommand: lane.lastCommand ?? null, completedEvidence: lane.completedEvidence === true, blockedReason };
 }
 
 export function reconcileCompletionLanes(state, { at, apply, save, observe = observeCompletionLane, registrationLoader = loadReviewRegistration, authorize = () => false, dispatch = null, logDir = path.join(os.tmpdir(), "coding-control-completion-logs") } = {}) {

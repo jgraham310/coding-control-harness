@@ -3,11 +3,25 @@ import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 
 const verified = new WeakSet();
+export function collectCommentPages(fetchPage, { maxPages = 100 } = {}) {
+  const comments = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const batch = fetchPage(page);
+    if (!Array.isArray(batch)) throw new Error("Invalid GitHub comments response");
+    comments.push(...batch);
+    if (batch.length < 100) return comments;
+  }
+  throw new Error("Review registration comment scan exceeded page bound");
+}
 const githubComments = (lane) => {
   const token = execFileSync("gh", ["auth", "token"], { encoding: "utf8", timeout: 5000 }).trim();
   if (!/^[A-Za-z0-9_.-]+$/.test(token)) throw new Error("GitHub token unavailable");
-  const url = `https://api.github.com/repos/${lane.repository}/issues/${lane.issue}/comments?per_page=100`;
-  return JSON.parse(execFileSync("curl", ["--fail", "--silent", "--show-error", "--url", url, "-K", "-"], { input: `header = "Authorization: Bearer ${token}"\nheader = "Accept: application/vnd.github+json"\n`, encoding: "utf8", timeout: 10000 }));
+  return collectCommentPages((page) => {
+    const url = `https://api.github.com/repos/${lane.repository}/issues/${lane.issue}/comments?per_page=100&page=${page}`;
+    return JSON.parse(execFileSync("curl", ["--fail", "--silent", "--show-error", "--url", url, "-K", "-"], {
+      input: `header = "Authorization: Bearer ${token}"\nheader = "Accept: application/vnd.github+json"\n`, encoding: "utf8", timeout: 10000,
+    }));
+  });
 };
 const sha = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const registrationPrefix = "independent-review-registration/v1 ";
