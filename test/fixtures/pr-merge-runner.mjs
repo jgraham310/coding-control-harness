@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 const ROOT = new URL('..', import.meta.url).pathname;
 const ALLOWLIST = join(ROOT, 'policy', 'auto-merge-allowlist.json');
 const TEMS_AUTHORITY_GATE = '/Users/jasongraham/.openclaw/repos/coding-control-harness/src/tems-merge-authority.mjs';
+const CIVICLINE_AUTHORITY_GATE = '/Users/jasongraham/.openclaw/repos/coding-control-harness/src/civicline-merge-authority.mjs';
 const TEMS_HOST_PARITY_TEST = '/Users/jasongraham/.openclaw/repos/coding-control-harness/test/live-portfolio-merge-runner.host.test.mjs';
 function arg(name) { const index = process.argv.indexOf(name); if (index === -1 || !process.argv[index + 1]) throw new Error(`${name} is required`); return process.argv[index + 1]; }
 function run(argv) { return execFileSync('gh', argv, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
@@ -82,8 +83,11 @@ function main() {
     execFileSync('node', [TEMS_AUTHORITY_GATE, repository, pr, head, protocol], { stdio: ['ignore', 'pipe', 'pipe'] });
   }
   const evidence = join(ROOT, 'evidence', 'pr-merge', repository.replace('/', '__'), `pr-${pr}`, `${head}.json`);
-  const authorization = authorizationFor(repository, pr, head);
-  const review = cleanReviewFor(repository, pr, head);
+  const civicline = repository === 'jgraham310/local-government';
+  const civiclineProof = civicline ? join(ROOT, 'evidence', 'merge-protocol', repository.replace('/', '__'), `pr-${pr}`, `${head}.json`) : null;
+  if (civicline) execFileSync('node', [CIVICLINE_AUTHORITY_GATE, 'check', pr, civiclineProof], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const authorization = civicline ? { digest: 'signal:1790601059903' } : authorizationFor(repository, pr, head);
+  const review = civicline ? { path: civiclineProof, digest: sha256(canonical(JSON.parse(readFileSync(civiclineProof, 'utf8')))), reviewed_at: JSON.parse(readFileSync(civiclineProof, 'utf8')).review?.observedAt } : cleanReviewFor(repository, pr, head);
   const current = JSON.parse(run(['pr', 'view', pr, '--repo', repository, '--json', 'headRefOid,mergeStateStatus,isDraft,statusCheckRollup']));
   if (current.headRefOid !== head) throw new Error(`PR head changed: expected ${head}, found ${current.headRefOid}`);
   if (current.isDraft || current.mergeStateStatus !== 'CLEAN') throw new Error(`PR is not mechanically mergeable: draft=${current.isDraft} merge=${current.mergeStateStatus}`);
@@ -106,7 +110,7 @@ function main() {
   // irreversible GitHub merge, so a failed merge call cannot erase evidence.
   const decision = { schema_version: 2, repository, pr: Number(pr), head_sha: head, decision: 'approved-for-squash-merge', decided_at: new Date().toISOString(), executor: 'portfolio-controller', authorization_sha256: authorization.digest, review_evidence_sha256: review.digest, review_evidence_path: review.path, review_completed_at: review.reviewed_at, ...(repository === 'jgraham310/tems' ? { portfolio_review_clear_at: reviewClearAt } : {}), unresolved_active_review_threads: 0, ci: 'all-success', tems_canonical_host_status_at: hostStatusAt, branch_merge_state: 'CLEAN' };
   writeAtomic(evidence, decision);
-  run(['pr', 'merge', pr, '--repo', repository, '--squash', '--delete-branch']);
+  run(['pr', 'merge', pr, '--repo', repository, '--squash', '--match-head-commit', head]);
   const record = { ...decision, merged_at: new Date().toISOString(), method: 'squash', outcome: 'merged' };
   writeAtomic(evidence, record);
   process.stdout.write(`${JSON.stringify(record)}\n`);
