@@ -16,7 +16,7 @@ import { acquireStateLock } from "./state-lock.mjs";
 import { reconcileCompletionLanes } from "./completion-watch.mjs";
 import { validateLane } from "../../../src/completion-controller.mjs";
 import { loadReviewRegistration } from "../../../src/review-registration.mjs";
-import { hasCompletionGrant, withCompletionGrant, canRecoverUnclaimedReservation, verifyExactWorktree } from "./completion-grant.mjs";
+import { hasCompletionGrant, withCompletionGrant, recoverUnclaimedReservation, verifyExactWorktree } from "./completion-grant.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultState = process.env.EXECUTION_HARNESS_STATE || path.join(here, "execution-state.json");
@@ -778,7 +778,7 @@ if (command === "status") {
   const findings = portfolioFindings(state, at, process.argv.includes("--apply"));
   findings.push(...reconcileCompletionLanes(state, { at, apply: process.argv.includes("--apply"), save: (updated) => save(stateFile, updated), logDir: path.join(path.dirname(stateFile), "completion-logs"),
     authorizeDispatch: (completion, reserve, launch) => withCompletionGrant(workStatePath(), completion, reserve, launch),
-    recoverReservation: (completion) => canRecoverUnclaimedReservation(workStatePath(), completion) }));
+    recoverReservation: (completion, restore) => recoverUnclaimedReservation(workStatePath(), completion, restore) }));
   for (const item of state.lanes.filter((candidate) => candidate.active)) {
     const unhealthyDispatch = dispatchHealth(item);
     if (unhealthyDispatch) {

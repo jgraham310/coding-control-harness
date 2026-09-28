@@ -48,19 +48,25 @@ export function reconcileCompletionLanes(state, { at, apply, save, observe = obs
     if (lane.lastDispatch?.launchStatus === "pending") {
       // A durable lane reservation can precede the global claim. If the exact
       // prepared grant is still unclaimed, launch could not have started.
-      let unclaimed = false;
-      try { unclaimed = recoverReservation(lane); } catch { /* fail closed */ }
-      if (unclaimed) {
-        const restored = structuredClone(lane);
-        restored.state = "executing";
-        restored.retry.attempts -= 1;
-        delete restored.lastDispatch;
-        restored.history ??= [];
-        restored.history.push({ at, state: "executing", action: "recover_preclaim_reservation", reason: "grant_unclaimed" });
+      let recovered = false;
+      if (apply) {
+        try {
+          recovered = recoverReservation(lane, () => {
+            const restored = structuredClone(lane);
+            restored.state = "executing";
+            restored.retry.attempts -= 1;
+            delete restored.lastDispatch;
+            restored.history ??= [];
+            restored.history.push({ at, state: "executing", action: "recover_preclaim_reservation", reason: "grant_unclaimed" });
+            state.completionLanes[index] = restored;
+            save(state);
+          });
+        } catch { /* fail closed */ }
+      }
+      if (recovered) {
         findings.push({ issue: lane.issue ?? null, phase: lane.state, kind: "completion_preclaim_reservation_recovered",
           evidence: { schema: "completion-preclaim-recovery/v1", laneId: lane.id, at, headSha: lane.headSha, workStateVersion: lane.workStateVersion },
           nextAction: "reobserve_exact_lane" });
-        if (apply) { state.completionLanes[index] = restored; save(state); }
         continue;
       }
       const uncertain = { state: "blocked", action: "hold", reason: "launch_outcome_uncertain", priority: "immediate" };

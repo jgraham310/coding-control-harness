@@ -34,7 +34,7 @@ assert.equal(dispatches, 1, "uncertain launch never duplicates a command");
 
 const recoverableState = { completionLanes: [{ ...structuredClone(state.completionLanes[0]), state: "recovering",
   lastDispatch: { ...state.completionLanes[0].lastDispatch, launchStatus: "pending", pid: undefined } }] };
-assert.equal(reconcileCompletionLanes(recoverableState, { ...options, recoverReservation: () => true })[0].kind, "completion_preclaim_reservation_recovered");
+assert.equal(reconcileCompletionLanes(recoverableState, { ...options, recoverReservation: (_lane, restore) => { restore(); return true; } })[0].kind, "completion_preclaim_reservation_recovered");
 assert.equal(recoverableState.completionLanes[0].state, "executing");
 assert.equal(recoverableState.completionLanes[0].retry.attempts, 0);
 assert.equal(recoverableState.completionLanes[0].lastDispatch, undefined);
