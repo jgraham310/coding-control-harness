@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "gate": "candidate-runner-contract-only",
-  "observedAt": "2026-09-28T03:34:21.412Z",
+  "observedAt": "2026-09-28T03:37:28.874Z",
   "hashes": {
     "package.json": "637ce2c8550bd83c90e4215fc854c6786b770d35938c827f004e9c7697d08107",
     "src/coding-kernel.mjs": "41318f0e569e95c7ebced733c3d2561ca8cfe86f2e7fdc4544b92b5049489e87",
     "src/tems-merge-authority.mjs": "dd7a82ef0167ca8b45ac49e8a662e175f6a458b82db9883fcdcfe00eda41bf3c",
     "test/coding-kernel.test.mjs": "1c1c3da2dea1037728999082494c34f60e82de5c97aa78f4f6e0c4a4006d8d5b",
     "test/tems-merge-authority.test.mjs": "429ab240c6390ab8d353de5987a140c1c9dfa2134f503740ec87c0d96bd77896",
-    "test/live-portfolio-merge-runner.test.mjs": "c2a1867b37063fe38a837b97b860d3a4db8e5a34e133565e3db26c89309847f1",
+    "test/live-portfolio-merge-runner.test.mjs": "4466a1af9cfe930d1b8b5e7e8c4e6da403f938b44b100867d4a004c03b5f9d18",
     "test/live-portfolio-merge-runner.host.test.mjs": "d9770d5a552b31c55402208562d1ff91c930311d7fc6326bcfe70f0cdd293bf3",
-    "test/fixtures/pr-merge-runner.mjs": "61f85640abeb7ce8734bf4388da6aa2244846fb7328e2fabeea0fae8b7d3cbd6",
+    "test/fixtures/pr-merge-runner.mjs": "153601c83666be6f06d788cfd2607a4b283510eac055369e4a63a4aaff6b6afc",
     "scripts/publish-tems-host-status.py": "6259b655b54c3aca0601b71dfdfe620bd92dcdcb07c786267efd9b5bcd808df1",
     "test/test_publish_tems_host_status.py": "6b940b90af3e9e07e5e0b0ba8c2ecd2cb10a756b834e623feadec2a7d64086ae"
   }

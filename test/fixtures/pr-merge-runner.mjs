@@ -40,7 +40,9 @@ function cleanReviewFor(repository, pr, head) {
 function requireCurrentChecks(repository, head, rollup, reviewedAt) {
   if (!Array.isArray(rollup) || rollup.length === 0) throw new Error('PR checks are missing or empty');
   const name = (check) => check.name ?? check.context;
-  const success = (check) => (check.status === 'COMPLETED' && check.conclusion === 'SUCCESS') || check.state === 'SUCCESS';
+  const success = (check) => ('status' in check || 'conclusion' in check)
+    ? check.status === 'COMPLETED' && check.conclusion === 'SUCCESS'
+    : check.state === 'SUCCESS';
   const failed = rollup.filter((check) => !check || !success(check));
   if (failed.length) throw new Error(`PR has non-success checks: ${failed.map((check) => check ? name(check) : 'invalid').join(',')}`);
   if (rollup.filter((check) => name(check) === 'portfolio/review-clear').length !== 1) {

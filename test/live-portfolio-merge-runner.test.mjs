@@ -75,8 +75,10 @@ assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)
 const head = process.env.TEMS_TEST_HEAD;
 if (process.argv[2] === 'pr') {
   const checks = process.env.TEMS_TEST_CHECKS;
-  const review = { context: 'portfolio/review-clear', state: checks === 'failed-clear' ? 'FAILURE' : 'SUCCESS' };
+  const review = { context: 'portfolio/review-clear', state: checks === 'failed-clear' ? 'FAILURE' : 'SUCCESS',
+    ...(checks === 'contradictory-clear' ? { status: 'IN_PROGRESS', conclusion: null } : {}) };
   const rollup = checks === 'empty' ? [] : [{ name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' },
+    ...(checks === 'failing-other' ? [{ name: 'security', status: 'COMPLETED', conclusion: 'FAILURE' }] : []),
     ...(checks === 'missing-clear' ? [] : [review])];
   process.stdout.write(JSON.stringify({ headRefOid: head, isDraft: false, mergeStateStatus: 'CLEAN',
     ...(checks === 'missing' ? {} : { statusCheckRollup: rollup }) }));
@@ -93,7 +95,8 @@ if (process.argv[2] === 'pr') {
         state: mode === 'failure' ? 'failure' : 'success', created_at: hostAt }]) ] }));
 }
 `, { mode: 0o755 });
-  for (const checks of ['missing', 'empty', 'missing-clear', 'failed-clear', 'absent-clear',
+  for (const checks of ['missing', 'empty', 'missing-clear', 'failed-clear', 'failing-other',
+    'contradictory-clear', 'absent-clear',
     'failed-clear-status', 'stale-clear', 'wrong-head-clear']) {
     const result = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
       '--pr', String(pr), '--head', head], { cwd: fixture, encoding: 'utf8',
