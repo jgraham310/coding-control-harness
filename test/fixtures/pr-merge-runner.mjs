@@ -37,6 +37,31 @@ function cleanReviewFor(repository, pr, head) {
   if (review.repository !== repository || Number(review.pr) !== Number(pr) || review.head_sha !== head || review.outcome !== 'clean') throw new Error('current-head Codex review is not clean');
   return { path, digest: sha256(canonical(review)), reviewed_at: review.reviewed_at };
 }
+function requireCurrentChecks(repository, head, rollup, reviewedAt) {
+  if (!Array.isArray(rollup) || rollup.length === 0) throw new Error('PR checks are missing or empty');
+  const name = (check) => check.name ?? check.context;
+  const success = (check) => ('status' in check || 'conclusion' in check)
+    ? check.status === 'COMPLETED' && check.conclusion === 'SUCCESS'
+    : check.state === 'SUCCESS';
+  const failed = rollup.filter((check) => !check || !success(check));
+  if (failed.length) throw new Error(`PR has non-success checks: ${failed.map((check) => check ? name(check) : 'invalid').join(',')}`);
+  for (const required of ['portfolio/review-clear', 'tems/canonical-host-integration']) {
+    if (rollup.filter((check) => name(check) === required).length !== 1) {
+      throw new Error(`required ${required} check is missing or ambiguous`);
+    }
+  }
+  const response = JSON.parse(run(['api', `repos/${repository}/commits/${head}/status`]));
+  const statuses = Array.isArray(response.statuses) ? response.statuses : [];
+  const latest = statuses.filter((entry) => entry.context === 'portfolio/review-clear')
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+  const observed = Date.parse(latest?.created_at);
+  const reviewed = Date.parse(reviewedAt);
+  if (response.sha !== head || !latest || latest.state !== 'success' ||
+      !Number.isFinite(observed) || !Number.isFinite(reviewed) || observed < reviewed || observed > Date.now()) {
+    throw new Error('exact-head portfolio/review-clear status is missing, failing, or stale');
+  }
+  return latest.created_at;
+}
 function currentTemsHostStatus(repository, head) {
   const response = JSON.parse(run(['api', `repos/${repository}/commits/${head}/status`]));
   const statuses = response.statuses;
@@ -62,8 +87,14 @@ function main() {
   const current = JSON.parse(run(['pr', 'view', pr, '--repo', repository, '--json', 'headRefOid,mergeStateStatus,isDraft,statusCheckRollup']));
   if (current.headRefOid !== head) throw new Error(`PR head changed: expected ${head}, found ${current.headRefOid}`);
   if (current.isDraft || current.mergeStateStatus !== 'CLEAN') throw new Error(`PR is not mechanically mergeable: draft=${current.isDraft} merge=${current.mergeStateStatus}`);
-  const failed = (current.statusCheckRollup ?? []).filter((check) => check.status !== 'COMPLETED' || check.conclusion !== 'SUCCESS');
-  if (failed.length) throw new Error(`PR has non-success checks: ${failed.map((check) => check.name ?? check.context).join(',')}`);
+  // Preserve the pre-existing all-success rollup rule for non-TEMS repositories.
+  const reviewClearAt = repository === 'jgraham310/tems'
+    ? requireCurrentChecks(repository, head, current.statusCheckRollup, review.reviewed_at)
+    : null;
+  if (repository !== 'jgraham310/tems') {
+    const failed = (current.statusCheckRollup ?? []).filter((check) => check.status !== 'COMPLETED' || check.conclusion !== 'SUCCESS');
+    if (failed.length) throw new Error(`PR has non-success checks: ${failed.map((check) => check.name ?? check.context).join(',')}`);
+  }
   const hostStatusAt = repository === 'jgraham310/tems' ? currentTemsHostStatus(repository, head) : null;
   if (repository === 'jgraham310/tems') {
     // A previously published status cannot attest to the currently installed files.
@@ -73,7 +104,7 @@ function main() {
   if (unresolvedThreads) throw new Error(`PR has ${unresolvedThreads} unresolved active review thread(s)`);
   // Persist the full authorization/review decision before executing the
   // irreversible GitHub merge, so a failed merge call cannot erase evidence.
-  const decision = { schema_version: 2, repository, pr: Number(pr), head_sha: head, decision: 'approved-for-squash-merge', decided_at: new Date().toISOString(), executor: 'portfolio-controller', authorization_sha256: authorization.digest, review_evidence_sha256: review.digest, review_evidence_path: review.path, review_completed_at: review.reviewed_at, unresolved_active_review_threads: 0, ci: 'all-success', tems_canonical_host_status_at: hostStatusAt, branch_merge_state: 'CLEAN' };
+  const decision = { schema_version: 2, repository, pr: Number(pr), head_sha: head, decision: 'approved-for-squash-merge', decided_at: new Date().toISOString(), executor: 'portfolio-controller', authorization_sha256: authorization.digest, review_evidence_sha256: review.digest, review_evidence_path: review.path, review_completed_at: review.reviewed_at, ...(repository === 'jgraham310/tems' ? { portfolio_review_clear_at: reviewClearAt } : {}), unresolved_active_review_threads: 0, ci: 'all-success', tems_canonical_host_status_at: hostStatusAt, branch_merge_state: 'CLEAN' };
   writeAtomic(evidence, decision);
   run(['pr', 'merge', pr, '--repo', repository, '--squash', '--delete-branch']);
   const record = { ...decision, merged_at: new Date().toISOString(), method: 'squash', outcome: 'merged' };
