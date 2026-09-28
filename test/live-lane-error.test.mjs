@@ -49,6 +49,9 @@ assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[10DEr
 assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[5DError: Cannot find module x', encoding: 'utf8' }), '', 'relative cursor-left short of column one preserves the visible prefix');
 assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(85) + '\x1b[5DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'wrapped 80-column output plus cursor-left reaches visual column one');
 assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(85) + '\x1b[4DError: Cannot find module x', encoding: 'utf8' }), '', 'wrapped cursor-left short of column one retains prefix');
+assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[79DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'cursor-left cancels pending autowrap at the final visible column');
+assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[78DError: Cannot find module x', encoding: 'utf8' }), '', 'pending-wrap cursor-left stopping at column two retains prefix');
+assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[5C\x1b[79DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'cursor-right at pane edge clamps before subsequent cursor-left');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',

@@ -48,14 +48,17 @@ process.stdin.on('data', (chunk) => {
           column = 1;
           boundary();
         } else if (final === 'G') {
-          column = positive(params[0]);
+          column = Math.min(paneWidth, positive(params[0]));
           if (column === 1) boundary();
         } else if (final === 'D' || final === 'C') {
-          column = final === 'D' ? Math.max(1, column - positive(params[0])) : column + positive(params[0]);
+          // A full-width print leaves autowrap pending at the last visible
+          // column; a cursor-control sequence cancels that pending wrap.
+          if (column > paneWidth) column = paneWidth;
+          column = final === 'D' ? Math.max(1, column - positive(params[0])) : Math.min(paneWidth, column + positive(params[0]));
           if (final === 'D' && column === 1) boundary();
         } else if (final === 'H' || final === 'f') {
           const nextRow = positive(params[0]);
-          const nextColumn = positive(params[1]);
+          const nextColumn = Math.min(paneWidth, positive(params[1]));
           if (nextColumn === 1) boundary();
           row = nextRow;
           column = nextColumn;
@@ -71,7 +74,7 @@ process.stdin.on('data', (chunk) => {
     if (byte === 0x1b) { mode = 'esc'; continue; }
     if (byte === 0x9b) { mode = 'csi'; csi = ''; continue; }
     if (byte === 0x0d || byte === 0x0a) { if (byte === 0x0a) row++; column = 1; boundary(); continue; }
-    if (byte === 0x08) { segment = segment.slice(0, -1); column = Math.max(1, column - 1); continue; }
+    if (byte === 0x08) { segment = segment.slice(0, -1); column = Math.max(1, Math.min(column, paneWidth) - 1); continue; }
     if (byte >= 0x20 && byte <= 0x7e) append(byte);
   }
 });
