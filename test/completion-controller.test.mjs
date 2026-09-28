@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { applyDecision, completionReceipt, reconcileLane } from "../src/completion-controller.mjs";
+import { applyDecision, classifyObservation, completionReceipt, detectPaneError, reconcileLane } from "../src/completion-controller.mjs";
 
 const lane = {
   id: "tems-624", owner: "tems-cto", sessionName: "tems-pr625-repair", worktree: "/work/tems-624",
@@ -37,7 +37,13 @@ next = applyDecision(lane, decision, { now: at });
 assert.equal(next.state, "recovering");
 assert.equal(next.lastError.reason, "hook_module_not_found");
 assert.equal(next.retry.attempts, 0);
+assert.equal(reconcileLane(next, { pane: "executing", laneError: "hook_module_not_found" }, { now: at }).action, "none", "persistent errors do not retrigger triage");
+assert.deepEqual(applyDecision(next, reconcileLane(next, { pane: "executing", laneError: "hook_module_not_found" }, { now: at }), { now: at }), next);
 assert.equal(reconcileLane(next, { pane: "executing" }, { now: at }).action, "heartbeat");
+assert.equal(classifyObservation({ blockedReason: "approval required", pane: "executing", lastCommand: { status: "rejected" } }), "blocked");
+assert.equal(reconcileLane(lane, { blockedReason: "approval required", pane: "executing", lastCommand: { status: "rejected" } }, { now: at }).action, "hold");
+assert.equal(detectPaneError("Error: Cannot find module '/deleted/hook.js'\n"), "Error: Cannot find module '/deleted/hook.js'");
+assert.equal(detectPaneError("Prior Error: Cannot find module is documented"), "");
 decision = reconcileLane(lane, { completedEvidence: true }, { now: at });
 assert.equal(decision.action, "verify_completion");
 assert.equal(completionReceipt(lane, { completedEvidence: true }, decision, { now: at }).laneId, "tems-624");

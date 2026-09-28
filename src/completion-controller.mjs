@@ -34,16 +34,22 @@ export function validateLane(lane) {
 export function classifyObservation(observation = {}) {
   // A detected error must be triaged before pane activity or completion claims
   // can advance the lane. A non-blocking hook fault can coexist with execution.
+  if (observation.blockedReason) return "blocked";
   if (text(observation.laneError)) return "lane_error";
   if (observation.lastCommand?.status === "rejected") return "command_rejected";
   if (observation.completedEvidence === true) return "completed";
-  if (observation.blockedReason) return "blocked";
   if (observation.pane === "executing") return "executing";
   if (observation.pane === "waiting_ci") return "awaiting_ci";
   if (observation.pane === "waiting_review") return "awaiting_review";
   if (observation.pane === "idle_prompt") return "idle_prompt";
   if (observation.pane === "exited") return "process_exited";
   return "unknown";
+}
+
+// Match only explicit error lines; ordinary prose mentioning a prior failure is not a gate.
+export function detectPaneError(pane = "") {
+  return String(pane).split(/\r?\n/).map((part) => part.trim())
+    .find((part) => /^(?:Error:\s+Cannot find module\b|(?:Error\s+)?\[?MODULE_NOT_FOUND\]?\b|hook_module_not_found\b)/i.test(part)) || "";
 }
 
 export function reconcileLane(lane, observation, { now = new Date().toISOString() } = {}) {
@@ -53,9 +59,12 @@ export function reconcileLane(lane, observation, { now = new Date().toISOString(
   if (Date.parse(lane.deadlineAt) <= Date.parse(now)) return { state: "blocked", action: "hold", reason: "deadline_exceeded" };
   const observed = classifyObservation(observation);
   if (observed === "lane_error") {
-    return { state: "recovering", action: "triage_error", reason: text(observation.laneError) };
+    const reason = text(observation.laneError);
+    if (lane.state === "recovering" && lane.lastError?.reason === reason) return { state: "recovering", action: "none", reason: "error_already_in_triage" };
+    return { state: "recovering", action: "triage_error", reason };
   }
   if (observed === "command_rejected" && observation.pane === "executing") {
+    if (lane.state === "recovering" && lane.lastError?.reason === "command_rejected") return { state: "recovering", action: "none", reason: "error_already_in_triage" };
     return { state: "recovering", action: "triage_error", reason: "command_rejected" };
   }
   if (observed === "completed") return { state: "completed", action: "verify_completion", reason: "completion_evidence_observed" };
@@ -74,6 +83,7 @@ export function reconcileLane(lane, observation, { now = new Date().toISOString(
 
 export function applyDecision(lane, decision, { now = new Date().toISOString() } = {}) {
   if (!decision || !text(decision.action)) throw new Error("decision.action is required");
+  if (decision.action === "none") return structuredClone(lane);
   const next = structuredClone(lane);
   next.updatedAt = now;
   next.history ||= [];

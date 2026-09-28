@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { handoffRecord } from "./deterministic-engine.mjs";
 import { emptyRuntime, registerWorkState, validateRuntime, workStateContext } from "./work-state.mjs";
 import { acquireStateLock } from "./state-lock.mjs";
+import { classifyObservation, detectPaneError } from "../../../src/completion-controller.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultState = process.env.EXECUTION_HARNESS_STATE || path.join(here, "execution-state.json");
@@ -324,6 +325,17 @@ function tmuxPaneState(session, pane) {
     return { ok: false, reason: `tmux session/pane is not live: ${session}${pane ? ` (${pane})` : ""}` };
   }
 }
+function liveLaneError(item) {
+  if (item.dispatch?.status !== "attached") return "";
+  // Explicit adapter error is preferred; otherwise inspect the actual executor
+  // pane. A failed capture is handled by dispatchHealth, not claimed as proof.
+  if (item.dispatch.laneError) return String(item.dispatch.laneError).trim();
+  if (process.argv.includes("--skip-tmux")) return "";
+  try {
+    const pane = execFileSync("tmux", ["capture-pane", "-p", "-t", item.dispatch.pane, "-S", "-80"], { encoding: "utf8", timeout: 5000 });
+    return detectPaneError(pane);
+  } catch { return ""; }
+}
 function dispatchHealth(item) {
   if (!item.dispatch || item.dispatch.status !== "attached") return null;
   if (process.argv.includes("--skip-tmux")) return null;
@@ -568,6 +580,7 @@ if (command === "status") {
   }
   const at = now();
   item.phase = to;
+  if (item.dispatch?.errorHold && to !== "blocked") item.dispatch.errorHold = null;
   if (to === "completed") {
     item.active = false;
     item.nextActionDueAt = null;
@@ -644,7 +657,7 @@ if (command === "status") {
   if (observed.cwd !== worktree) fail(`tmux pane cwd mismatch for ${item.id}: expected ${worktree}, observed ${observed.cwd}. Do not attach a different lane.`);
   const at = now();
   item.tmuxSession = session;
-  item.dispatch = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at };
+  item.dispatch = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at, errorHold: null, laneError: null };
   item.phase = "implementing";
   item.heartbeatDueAt = deadline;
   item.nextActionDueAt = deadline;
@@ -745,6 +758,24 @@ if (command === "status") {
   const timestamp = Date.parse(at);
   const findings = portfolioFindings(state, at, process.argv.includes("--apply"));
   for (const item of state.lanes.filter((candidate) => candidate.active)) {
+    // Error evidence outranks pane activity, claimed completion, and automatic
+    // recovery. A persisted hold makes repeated watch ticks side-effect free.
+    if (item.dispatch?.errorHold) continue;
+    const laneError = liveLaneError(item);
+    if (classifyObservation({ laneError, blockedReason: item.blocker }) === "lane_error") {
+      const evidence = `development_lane_error:${laneError}`;
+      findings.push({ issue: item.issue, phase: item.phase, kind: "development_lane_error", evidence, nextAction: "Triage the executor error and explicitly rearm this lane after repair." });
+      if (process.argv.includes("--apply")) {
+        item.phase = "stalled";
+        item.blocker = evidence;
+        item.nextAction = "Triage the executor error and explicitly rearm this lane after repair.";
+        item.heartbeatDueAt = null;
+        item.nextActionDueAt = null;
+        item.dispatch.errorHold = { at, evidence };
+        event(state, { at, laneId: item.id, kind: "development_lane_error", evidence });
+      }
+      continue;
+    }
     const unhealthyDispatch = dispatchHealth(item);
     if (unhealthyDispatch) {
       const phaseBeforeInvalidation = item.phase;
