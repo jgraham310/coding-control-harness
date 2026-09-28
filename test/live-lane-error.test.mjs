@@ -36,6 +36,9 @@ assert.equal(execFileSync('node', [streamFilter], { input: "old prompt\x9b1E\x9b
 assert.equal(execFileSync('node', [streamFilter], { input: Buffer.concat([Buffer.from('old prompt'), Buffer.from([0x9b]), Buffer.from("1EError: Cannot find module '/deleted/hook.js'")]), encoding: 'utf8' }), 'hook_module_not_found\n', 'raw 8-bit CSI bytes survive terminal parsing');
 assert.equal(execFileSync('node', [streamFilter], { input: "Error: Cannot find module first\x1b[1EError: Cannot find module second", encoding: 'utf8' }), 'hook_module_not_found\nhook_module_not_found\n', 'CSI visual boundaries reset marker deduplication without CR or LF');
 assert.equal(execFileSync('node', [streamFilter], { input: "old prompt\rError: Cannot find module '/deleted/hook.js'", encoding: 'utf8' }), 'hook_module_not_found\n', 'CR-only repaint is detected before a newline');
+assert.equal(execFileSync('node', [streamFilter], { input: 'Error: Cannot find module x\bX', encoding: 'utf8' }), 'hook_module_not_found\n', 'backspace repaint stays deduplicated within one visual segment');
+assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[0KError: Cannot find module x', encoding: 'utf8' }), '', 'erase-to-end does not remove a visible prefix');
+assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[2KError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'erase-entire-line clears the visual prefix');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
@@ -106,6 +109,14 @@ try {
   assert.equal(run('2026-09-28T19:12:06Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'new pane does not inherit stale output monitor');
   fs.appendFileSync(stored.lanes[0].dispatch.paneStream.path, 'hook_module_not_found\n');
   assert.equal(run('2026-09-28T19:12:07Z').findings.some((entry) => entry.kind === 'development_lane_error'), true, 'fresh new-pane error still holds');
+
+  write({ ...fixture, lanes: [{ ...lane, phase: 'identified', dispatch: { ...lane.dispatch, status: 'ready' } }] });
+  command('attach-development', '--issue', '566', '--tmux-session', 'fake', '--tmux-pane', 'fake:2.0', '--evidence', 'First attachment of the executor.', '--heartbeat-due', '2099-01-01T00:00:00Z');
+  stored = JSON.parse(fs.readFileSync(stateFile));
+  assert.equal(stored.lanes[0].phase, 'stalled', 'first attachment holds an error already visible in the pane');
+  assert.equal(stored.lanes[0].dispatch.paneStream.pane, 'fake:2.0', 'first attachment starts a fresh-output monitor');
+  assert.equal(stored.events.filter((entry) => entry.kind === 'development_lane_error').length, 1);
+  assert.equal(run('2026-09-28T19:12:08Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'first-attach hold is durable across repeat watch');
 
   write({ ...fixture, lanes: [{ ...lane, blocker: 'approval required' }] });
   assert.equal(run('2026-09-28T19:12:00Z').findings.some((entry) => entry.kind === 'development_lane_error'), false);

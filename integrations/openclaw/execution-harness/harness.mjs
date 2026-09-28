@@ -718,15 +718,13 @@ if (command === "status") {
   if (observed.cwd !== worktree) fail(`tmux pane cwd mismatch for ${item.id}: expected ${worktree}, observed ${observed.cwd}. Do not attach a different lane.`);
   const at = now();
   item.tmuxSession = session;
-  const heldError = Boolean(item.dispatch.errorHold);
   const attachment = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at, laneError: null };
   if (attachment.paneStream?.pane !== observed.target) attachment.paneStream = null;
   const baseline = paneSnapshot({ dispatch: attachment });
   if (!baseline) fail(`Cannot attach #${item.issue}; the pane could not be captured for a fresh-output baseline.`);
-  if (heldError || item.dispatch.paneStream) {
-    const { stream } = rearmPaneStream({ ...item, dispatch: attachment });
-    attachment.paneStream = stream;
-  }
+  const initialError = item.dispatch.status === "ready" ? detectPaneError(baseline.lines.join("\n")) : "";
+  const { stream } = rearmPaneStream({ ...item, dispatch: attachment });
+  attachment.paneStream = stream;
   const previousStream = item.dispatch.paneStream;
   if (previousStream && previousStream.pane !== observed.target && panePipeActive(previousStream.pane)) {
     try {
@@ -741,12 +739,24 @@ if (command === "status") {
     }
   }
   item.dispatch = { ...attachment, errorHold: null, paneBaseline: baseline };
-  item.phase = "implementing";
-  item.blocker = null;
-  item.heartbeatDueAt = deadline;
-  item.nextActionDueAt = deadline;
-  item.lastEvidence = { at, detail: evidence };
-  event(state, { at, laneId: item.id, kind: "development_dispatch_attached", evidence });
+  if (initialError) {
+    const errorEvidence = `development_lane_error:${initialError}`;
+    item.phase = "stalled";
+    item.blocker = errorEvidence;
+    item.nextAction = "Triage the executor error and explicitly rearm this lane after repair.";
+    item.heartbeatDueAt = null;
+    item.nextActionDueAt = null;
+    item.dispatch.errorHold = { at, evidence: errorEvidence };
+    item.lastEvidence = { at, detail: errorEvidence };
+    event(state, { at, laneId: item.id, kind: "development_lane_error", evidence: errorEvidence });
+  } else {
+    item.phase = "implementing";
+    item.blocker = null;
+    item.heartbeatDueAt = deadline;
+    item.nextActionDueAt = deadline;
+    item.lastEvidence = { at, detail: evidence };
+    event(state, { at, laneId: item.id, kind: "development_dispatch_attached", evidence });
+  }
   save(stateFile, state);
   print({ lane: item, event: state.events.at(-1) });
 } else if (command === "authorize-immediate-release") {

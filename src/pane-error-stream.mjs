@@ -35,7 +35,7 @@ process.stdin.on('data', (chunk) => {
     if (mode === 'csi') {
       if (byte >= 0x40 && byte <= 0x7e) {
         const final = String.fromCharCode(byte);
-        if ('HfGdEF'.includes(final) || (final === 'K' && /^[02]?$/.test(csi))) boundary();
+        if ('HfGdEF'.includes(final) || (final === 'K' && csi === '2')) boundary();
         mode = 'text';
       } else if (csi.length < 32) csi += String.fromCharCode(byte);
       else mode = 'text';
@@ -44,7 +44,11 @@ process.stdin.on('data', (chunk) => {
     if (byte === 0x1b) { mode = 'esc'; continue; }
     if (byte === 0x9b) { mode = 'csi'; csi = ''; continue; }
     if (byte === 0x0d || byte === 0x0a) { boundary(); continue; }
-    if (byte === 0x08) { segment = segment.slice(0, -1); matched = false; continue; }
+    if (byte === 0x08) {
+      segment = segment.slice(0, -1);
+      if (!detectPaneError(segment)) matched = false;
+      continue;
+    }
     if (byte >= 0x20 && byte <= 0x7e) append(byte);
   }
 });
