@@ -21,6 +21,10 @@ case "$1" in
 esac
 `);
 fs.chmodSync(tmux, 0o755);
+const gh = path.join(fakeBin, 'gh');
+const uatMarkers = ['## Engineering Acceptance Contract', '## Machine-Executable UAT', '### Issue-derived user role', '### Synthetic test data and starting state', '### Steps', '### Expected outcomes', '### Forbidden outcomes', '### Correctness and compliance checks', '### Evidence to capture', 'issue-566-acceptance'];
+fs.writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({ state: 'OPEN', body: uatMarkers.join('\n') })}'\n`);
+fs.chmodSync(gh, 0o755);
 const harness = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../integrations/openclaw/execution-harness/harness.mjs');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
@@ -35,6 +39,7 @@ const fixture = { schemaVersion: 2, portfolio: { repositories: [{ id: 'tems', re
 const env = { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, TEST_WORKTREE: root, TEST_PANE_FILE: paneFile };
 const write = (value) => fs.writeFileSync(stateFile, JSON.stringify(value));
 const run = (at) => JSON.parse(execFileSync('node', [harness, 'watch', '--apply', '--auto-recover', '--state', stateFile, '--skip-github', '--skip-staging', '--at', at], { encoding: 'utf8', env, cwd: root }));
+const command = (...args) => JSON.parse(execFileSync('node', [harness, ...args, '--state', stateFile, '--at', '2026-09-28T19:12:00Z'], { encoding: 'utf8', env, cwd: root }));
 try {
   write(fixture);
   const first = run('2026-09-28T19:10:00Z');
@@ -52,6 +57,25 @@ try {
   assert.equal(stored.events.filter((entry) => entry.kind === 'development_lane_error').length, 1);
   assert.equal(stored.lanes.length, 1);
   assert.equal(stored.lanes[0].dispatch.recoveryCount, undefined);
+
+  fs.renameSync(paneFile, `${paneFile}.unavailable`);
+  assert.throws(() => command('transition', '--issue', '566', '--to', 'implementing', '--evidence', 'Attempted rearm without pane capture.'), /Command failed/, 'rearm fails closed if the pane cannot be baselined');
+  fs.renameSync(`${paneFile}.unavailable`, paneFile);
+  assert.equal(JSON.parse(fs.readFileSync(stateFile)).lanes[0].dispatch.errorHold !== null, true);
+
+  command('transition', '--issue', '566', '--to', 'implementing', '--evidence', 'Operator repaired the hook and explicitly rearmed the same pane.', '--heartbeat-due', '2099-01-01T00:00:00Z');
+  assert.equal(run('2026-09-28T19:12:01Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'old scrollback must not retrigger after rearm');
+  fs.appendFileSync(paneFile, 'Execution continuing normally\n');
+  assert.equal(run('2026-09-28T19:12:02Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'new healthy output does not revive historical error');
+  fs.writeFileSync(paneFile, "Error: Cannot find module '/deleted/hook.js'\nExecution continuing normally (repainted)\n");
+  assert.equal(run('2026-09-28T19:12:02Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'prompt repaint does not revive historical error');
+  fs.appendFileSync(paneFile, "Error: Cannot find module '/deleted/hook.js'\n");
+  assert.equal(run('2026-09-28T19:12:03Z').findings.some((entry) => entry.kind === 'development_lane_error'), true, 'a fresh identical error still holds the lane');
+  stored = JSON.parse(fs.readFileSync(stateFile));
+  assert.equal(stored.events.filter((entry) => entry.kind === 'development_lane_error').length, 2);
+
+  command('attach-development', '--issue', '566', '--tmux-session', 'fake', '--tmux-pane', 'fake:0.0', '--evidence', 'Operator reattached the repaired pane.', '--heartbeat-due', '2099-01-01T00:00:00Z');
+  assert.equal(run('2026-09-28T19:12:04Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'reattach acknowledges existing scrollback');
 
   write({ ...fixture, lanes: [{ ...lane, blocker: 'approval required' }] });
   assert.equal(run('2026-09-28T19:12:00Z').findings.some((entry) => entry.kind === 'development_lane_error'), false);

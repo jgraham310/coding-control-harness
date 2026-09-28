@@ -325,16 +325,34 @@ function tmuxPaneState(session, pane) {
     return { ok: false, reason: `tmux session/pane is not live: ${session}${pane ? ` (${pane})` : ""}` };
   }
 }
+function paneSnapshot(item) {
+  if (process.argv.includes("--skip-tmux")) return null;
+  try {
+    const output = execFileSync("tmux", ["capture-pane", "-p", "-t", item.dispatch.pane, "-S", "-80"], { encoding: "utf8", timeout: 5000 });
+    return { pane: item.dispatch.pane, lines: output.replace(/\n+$/, "").split(/\r?\n/) };
+  } catch { return null; }
+}
+function unseenPaneOutput(previous, current) {
+  if (!previous || previous.pane !== current.pane || !Array.isArray(previous.lines)) return current.lines;
+  const old = previous.lines;
+  // The capture window slides as new lines arrive. Match the longest suffix
+  // retained from the acknowledged snapshot, then inspect only newer lines.
+  for (let count = Math.min(old.length, current.lines.length); count > 0; count--) {
+    if (old.slice(-count).every((line, index) => line === current.lines[index])) return current.lines.slice(count);
+  }
+  // A shell may repaint its final prompt in place without advancing a line.
+  let prefix = 0;
+  while (prefix < Math.min(old.length, current.lines.length) && old[prefix] === current.lines[prefix]) prefix++;
+  if (prefix) return current.lines.slice(prefix);
+  return current.lines;
+}
 function liveLaneError(item) {
-  if (item.dispatch?.status !== "attached") return "";
+  if (item.dispatch?.status !== "attached") return { error: "", snapshot: null };
   // Explicit adapter error is preferred; otherwise inspect the actual executor
   // pane. A failed capture is handled by dispatchHealth, not claimed as proof.
-  if (item.dispatch.laneError) return String(item.dispatch.laneError).trim();
-  if (process.argv.includes("--skip-tmux")) return "";
-  try {
-    const pane = execFileSync("tmux", ["capture-pane", "-p", "-t", item.dispatch.pane, "-S", "-80"], { encoding: "utf8", timeout: 5000 });
-    return detectPaneError(pane);
-  } catch { return ""; }
+  if (item.dispatch.laneError) return { error: String(item.dispatch.laneError).trim(), snapshot: null };
+  const snapshot = paneSnapshot(item);
+  return { error: snapshot ? detectPaneError(unseenPaneOutput(item.dispatch.paneBaseline, snapshot).join("\n")) : "", snapshot };
 }
 function dispatchHealth(item) {
   if (!item.dispatch || item.dispatch.status !== "attached") return null;
@@ -579,8 +597,15 @@ if (command === "status") {
     if (missing.length) fail(`Cannot mark #${item.issue} production verified; exact-artifact verification missing: ${missing.join(", ")}.`);
   }
   const at = now();
+  if (item.dispatch?.errorHold && to !== "blocked") {
+    const snapshot = paneSnapshot(item);
+    if (!snapshot) fail(`Cannot rearm #${item.issue}; the attached pane could not be captured for a fresh-output baseline.`);
+    item.dispatch.paneBaseline = snapshot;
+  }
   item.phase = to;
-  if (item.dispatch?.errorHold && to !== "blocked") item.dispatch.errorHold = null;
+  if (item.dispatch?.errorHold && to !== "blocked") {
+    item.dispatch.errorHold = null;
+  }
   if (to === "completed") {
     item.active = false;
     item.nextActionDueAt = null;
@@ -658,6 +683,7 @@ if (command === "status") {
   const at = now();
   item.tmuxSession = session;
   item.dispatch = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at, errorHold: null, laneError: null };
+  item.dispatch.paneBaseline = paneSnapshot(item);
   item.phase = "implementing";
   item.heartbeatDueAt = deadline;
   item.nextActionDueAt = deadline;
@@ -761,7 +787,8 @@ if (command === "status") {
     // Error evidence outranks pane activity, claimed completion, and automatic
     // recovery. A persisted hold makes repeated watch ticks side-effect free.
     if (item.dispatch?.errorHold) continue;
-    const laneError = liveLaneError(item);
+    const { error: laneError, snapshot } = liveLaneError(item);
+    if (snapshot && process.argv.includes("--apply")) item.dispatch.paneBaseline = snapshot;
     if (classifyObservation({ laneError, blockedReason: item.blocker }) === "lane_error") {
       const evidence = `development_lane_error:${laneError}`;
       findings.push({ issue: item.issue, phase: item.phase, kind: "development_lane_error", evidence, nextAction: "Triage the executor error and explicitly rearm this lane after repair." });
