@@ -350,10 +350,17 @@ function panePipeActive(pane) {
   try { return execFileSync("tmux", ["display-message", "-p", "-t", pane, "#{pane_pipe}"], { encoding: "utf8", timeout: 5000 }).trim() === "1"; }
   catch { return false; }
 }
+function paneWidth(pane) {
+  try {
+    const width = Number(execFileSync("tmux", ["display-message", "-p", "-t", pane, "#{pane_width}"], { encoding: "utf8", timeout: 5000 }).trim());
+    return Number.isInteger(width) && width > 0 ? width : null;
+  } catch { return null; }
+}
 function rearmPaneStream(item) {
   const existing = item.dispatch.paneStream;
   if (existing?.pane === item.dispatch.pane && panePipeActive(item.dispatch.pane)) {
     try {
+      if (!existing.width || paneWidth(existing.pane) !== existing.width) fail(`Cannot rearm #${item.issue}; pane width changed and the output monitor must be replaced.`);
       const offset = fs.statSync(existing.path).size;
       const snapshot = paneSnapshot(item);
       if (!snapshot) fail(`Cannot rearm #${item.issue}; the attached pane could not be captured for a fresh-output baseline.`);
@@ -362,17 +369,20 @@ function rearmPaneStream(item) {
     catch { fail(`Cannot rearm #${item.issue}; the pane output stream is unavailable.`); }
   }
   if (panePipeActive(item.dispatch.pane)) fail(`Cannot rearm #${item.issue}; the pane already has another output pipe.`);
+  const width = paneWidth(item.dispatch.pane);
+  if (!width) fail(`Cannot rearm #${item.issue}; pane width is unavailable.`);
   const streamPath = `${path.resolve(stateFile)}.${item.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.${Date.now()}.pane-output`;
   try {
     fs.closeSync(fs.openSync(streamPath, "wx", 0o600));
     const quoted = `'${streamPath.replace(/'/g, "'\\''")}'`;
     const node = `'${process.execPath.replace(/'/g, "'\\''")}'`;
     const filter = `'${path.resolve(here, "../../../src/pane-error-stream.mjs").replace(/'/g, "'\\''")}'`;
-    execFileSync("tmux", ["pipe-pane", "-O", "-o", "-t", item.dispatch.pane, `${node} ${filter} >> ${quoted}`], { timeout: 5000 });
+    execFileSync("tmux", ["pipe-pane", "-O", "-o", "-t", item.dispatch.pane, `${node} ${filter} ${width} >> ${quoted}`], { timeout: 5000 });
     if (!panePipeActive(item.dispatch.pane)) throw new Error("output pipe did not attach");
+    if (paneWidth(item.dispatch.pane) !== width) throw new Error("pane width changed during output monitor installation");
     const snapshot = paneSnapshot(item);
     if (!snapshot) throw new Error("attached pane could not be captured for a fresh-output baseline");
-    return { snapshot, stream: { pane: item.dispatch.pane, path: streamPath, offset: 0 } };
+    return { snapshot, stream: { pane: item.dispatch.pane, path: streamPath, offset: 0, width } };
   } catch (error) {
     if (panePipeActive(item.dispatch.pane)) {
       try { execFileSync("tmux", ["pipe-pane", "-t", item.dispatch.pane], { timeout: 5000 }); } catch {}
@@ -390,6 +400,7 @@ function liveLaneError(item) {
   if (stream) {
     try {
       if (stream.pane !== item.dispatch.pane || !panePipeActive(stream.pane)) throw new Error("output pipe detached");
+      if (!stream.width || paneWidth(stream.pane) !== stream.width) throw new Error("pane width changed");
       const output = fs.readFileSync(stream.path);
       if (output.length < stream.offset) throw new Error("output stream truncated");
       return { error: detectPaneError(output.subarray(stream.offset).toString("utf8")), snapshot: null, streamOffset: output.length };

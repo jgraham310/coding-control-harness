@@ -17,7 +17,7 @@ fs.writeFileSync(tmux, `#!/bin/sh
 if [ -n "$TEST_TMUX_LOG" ]; then printf '%s\\n' "$*" >> "$TEST_TMUX_LOG"; fi
 case "$1" in
   has-session) exit 0 ;;
-  display-message) if [ "$5" = '#{pane_pipe}' ]; then if [ -f "$TEST_PIPE_MARKER.$4" ]; then echo 1; else echo 0; fi; else printf '%s\\n' "$TEST_WORKTREE"; fi ;;
+  display-message) if [ "$5" = '#{pane_pipe}' ]; then if [ -f "$TEST_PIPE_MARKER.$4" ]; then echo 1; else echo 0; fi; elif [ "$5" = '#{pane_width}' ]; then echo "\${TEST_PANE_WIDTH:-80}"; else printf '%s\\n' "$TEST_WORKTREE"; fi ;;
   capture-pane) cat "$TEST_PANE_FILE" ;;
   pipe-pane) previous=''; target=''; for part in "$@"; do if [ "$previous" = '-t' ]; then target="$part"; fi; previous="$part"; done; if [ "$2" = '-t' ]; then rm -f "$TEST_PIPE_MARKER.$target"; else touch "$TEST_PIPE_MARKER.$target"; if [ "$target" = "$TEST_INJECT_ON_PIPE" ]; then printf 'Error: Cannot find module /race/hook.js\\n' >> "$TEST_PANE_FILE"; fi; fi ;;
   list-sessions) exit 0 ;;
@@ -47,6 +47,8 @@ assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[1;5HE
 assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[2;5HError: Cannot find module x', encoding: 'utf8' }), '', 'a non-column-one row move does not prove the destination prefix is empty');
 assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[10DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'relative cursor-left repaint reaching column one starts fresh classification');
 assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[5DError: Cannot find module x', encoding: 'utf8' }), '', 'relative cursor-left short of column one preserves the visible prefix');
+assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(85) + '\x1b[5DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'wrapped 80-column output plus cursor-left reaches visual column one');
+assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(85) + '\x1b[4DError: Cannot find module x', encoding: 'utf8' }), '', 'wrapped cursor-left short of column one retains prefix');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
@@ -137,6 +139,10 @@ try {
   stored = JSON.parse(fs.readFileSync(stateFile));
   assert.equal(stored.lanes[0].phase, 'stalled', 'error between pipe installation and final capture is held');
   assert.equal(stored.events.filter((entry) => entry.kind === 'development_lane_error').length, 1);
+  env.TEST_PANE_WIDTH = '40';
+  write({ ...fixture, lanes: [{ ...lane, phase: 'implementing', blocker: null, dispatch: { ...stored.lanes[0].dispatch, errorHold: null } }] });
+  assert.equal(run('2026-09-28T19:12:09Z').findings.some((entry) => entry.kind === 'development_lane_error' && entry.evidence.includes('pane_output_monitor_unavailable')), true, 'pane resize fails closed until the width-bound monitor is replaced');
+  delete env.TEST_PANE_WIDTH;
 
   write({ ...fixture, lanes: [{ ...lane, blocker: 'approval required' }] });
   assert.equal(run('2026-09-28T19:12:00Z').findings.some((entry) => entry.kind === 'development_lane_error'), false);

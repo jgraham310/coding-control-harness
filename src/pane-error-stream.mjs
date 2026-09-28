@@ -9,8 +9,11 @@ let mode = 'text';
 let csi = '';
 let row = 1;
 let column = 1;
+const paneWidth = Number(process.argv[2] ?? 80);
+if (!Number.isInteger(paneWidth) || paneWidth < 1) throw new Error('pane-error-stream requires a positive pane width');
 function boundary() { segment = ''; matched = false; }
 function append(byte) {
+  if (column > paneWidth) { row++; column = 1; boundary(); }
   if (segment.length >= 4096) return;
   segment += String.fromCharCode(byte);
   column++;
