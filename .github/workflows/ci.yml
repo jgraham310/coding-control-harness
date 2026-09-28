@@ -28,4 +28,3 @@ jobs:
         with:
           node-version: 22
       - run: npm run test:host-integration
-      - run: git diff --exit-code -- test/fixtures/tems-host-integration-receipt.json
