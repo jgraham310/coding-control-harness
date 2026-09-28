@@ -8,6 +8,7 @@
 import crypto from "node:crypto";
 
 const ACTION_CLASSES = new Set(["inspect", "observe", "draft", "internal_update", "retry_safe"]);
+const BOUNDED_OPERATIONS = new Set(["merge_green_pr", "stage_release"]);
 const TERMINAL_ACTIONS = new Set(["succeeded", "failed", "cancelled"]);
 const PHASES = new Set(["identified", "active", "waiting", "blocked", "verified", "completed"]);
 const TRANSITIONS = new Map([
@@ -55,6 +56,7 @@ export function validateRuntime(runtime) {
 function validateRecord(record, runtime) {
   for (const key of ["id", "objective", "phase", "nextAction", "owner", "createdAt", "updatedAt"]) requiredString(record?.[key], `WorkState.${key}`);
   if (!record.authorityBoundary || typeof record.authorityBoundary !== "object" || !Array.isArray(record.authorityBoundary.allowedActions) || !record.authorityBoundary.allowedActions.every((action) => ACTION_CLASSES.has(action))) fail(`WorkState ${record.id} has invalid authority boundary.`);
+  if (record.authorizedOperations !== undefined && (!Array.isArray(record.authorizedOperations) || !record.authorizedOperations.every((operation) => BOUNDED_OPERATIONS.has(operation)))) fail(`WorkState ${record.id} has invalid authorized operations.`);
   if (!Number.isInteger(record.version) || record.version < 1) fail(`WorkState ${record.id} has invalid version.`);
   if (!PHASES.has(record.phase)) fail(`WorkState ${record.id} has invalid phase.`);
   array(record.acceptanceTests, `WorkState ${record.id}.acceptanceTests`);
@@ -64,6 +66,8 @@ function validateRecord(record, runtime) {
   iso(record.lastVerifiedAt, `WorkState ${record.id}.lastVerifiedAt`);
   if (record.retryPolicy !== null && record.retryPolicy !== undefined && typeof record.retryPolicy !== "object") fail(`WorkState ${record.id}.retryPolicy must be an object or null.`);
   for (const evidenceRef of record.evidenceRefs) if (!runtime.evidence[evidenceRef]) fail(`WorkState ${record.id} references missing evidence ${evidenceRef}.`);
+  if (record.currentDeploymentEvidenceRef != null && (!record.evidenceRefs.includes(record.currentDeploymentEvidenceRef) || !runtime.evidence[record.currentDeploymentEvidenceRef])) fail(`WorkState ${record.id} has unselected deployment evidence.`);
+  if (record.authorizedOperations?.length && (record.id !== "cto:civicline" || !record.evidenceRefs.includes("civicline-merge-staging-grant-20260928") || runtime.evidence["civicline-merge-staging-grant-20260928"]?.status !== "verified")) fail(`WorkState ${record.id} lacks bounded operation grant evidence.`);
 }
 
 export function registerWorkState(runtime, input, at) {
@@ -77,6 +81,8 @@ export function registerWorkState(runtime, input, at) {
     objective: requiredString(input.objective, "WorkState.objective"),
     acceptanceTests: clone(input.acceptanceTests),
     authorityBoundary: clone(input.authorityBoundary),
+    authorizedOperations: clone(input.authorizedOperations ?? []),
+    currentDeploymentEvidenceRef: input.currentDeploymentEvidenceRef ?? null,
     phase: input.phase ?? "identified",
     nextAction: requiredString(input.nextAction, "WorkState.nextAction"),
     owner: requiredString(input.owner, "WorkState.owner"),
@@ -123,7 +129,7 @@ export function recordEvidence(runtime, receipt, at) {
 
 function validatePatch(record, patch, runtime) {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) fail("State patch must be an object.");
-  const allowed = new Set(["status", "phase", "nextAction", "owner", "dependencies", "blockers", "facts", "decisions", "evidenceRefs", "retryPolicy", "deadline", "lastVerifiedAt"]);
+  const allowed = new Set(["status", "phase", "nextAction", "owner", "dependencies", "blockers", "facts", "decisions", "evidenceRefs", "authorizedOperations", "currentDeploymentEvidenceRef", "retryPolicy", "deadline", "lastVerifiedAt"]);
   for (const key of Object.keys(patch)) if (!allowed.has(key)) fail(`State patch cannot change ${key}.`);
   if (patch.phase !== undefined) {
     if (!PHASES.has(patch.phase)) fail(`Invalid target phase ${patch.phase}.`);
@@ -133,6 +139,8 @@ function validatePatch(record, patch, runtime) {
   if (patch.owner !== undefined) requiredString(patch.owner, "State patch owner");
   for (const field of ["dependencies", "blockers", "facts", "decisions", "evidenceRefs"]) if (patch[field] !== undefined) array(patch[field], `State patch ${field}`);
   if (patch.evidenceRefs) for (const evidenceRef of patch.evidenceRefs) if (!runtime.evidence[evidenceRef]) fail(`State patch references missing evidence ${evidenceRef}.`);
+  if (patch.authorizedOperations !== undefined && (!Array.isArray(patch.authorizedOperations) || !patch.authorizedOperations.every((operation) => BOUNDED_OPERATIONS.has(operation)))) fail("State patch has invalid authorized operations.");
+  if (patch.currentDeploymentEvidenceRef !== undefined && patch.currentDeploymentEvidenceRef !== null) requiredString(patch.currentDeploymentEvidenceRef, "State patch currentDeploymentEvidenceRef");
   if (patch.deadline !== undefined) iso(patch.deadline, "State patch deadline");
   if (patch.lastVerifiedAt !== undefined) iso(patch.lastVerifiedAt, "State patch lastVerifiedAt");
 }

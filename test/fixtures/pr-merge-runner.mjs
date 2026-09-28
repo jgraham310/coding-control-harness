@@ -9,7 +9,7 @@ const ROOT = new URL('..', import.meta.url).pathname;
 const ALLOWLIST = join(ROOT, 'policy', 'auto-merge-allowlist.json');
 const TEMS_AUTHORITY_GATE = '/Users/jasongraham/.openclaw/repos/coding-control-harness/src/tems-merge-authority.mjs';
 const CIVICLINE_AUTHORITY_GATE = '/Users/jasongraham/.openclaw/repos/coding-control-harness/src/civicline-merge-authority.mjs';
-const CIVICLINE_GATE_SHA256 = '521fec9e0cb04d98eddfbb4f1e928c47569cc8d66cefd88b5fec4d3deceeab33';
+const CIVICLINE_GATE_SHA256 = 'cfbabd43297da4fa3787969b68516ef315c8206c736f5ce5d077f9fbac5806db';
 const TEMS_HOST_PARITY_TEST = '/Users/jasongraham/.openclaw/repos/coding-control-harness/test/live-portfolio-merge-runner.host.test.mjs';
 function arg(name) { const index = process.argv.indexOf(name); if (index === -1 || !process.argv[index + 1]) throw new Error(`${name} is required`); return process.argv[index + 1]; }
 function run(argv) { return execFileSync('gh', argv, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }

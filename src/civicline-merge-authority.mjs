@@ -27,7 +27,7 @@ export function charterValid(c) {
 export function evaluateMerge({source,live,state,pr,checks,proof,p2Issue,reviews,threads,browserReceipt,browserDigest,deploymentReceipt,deploymentDigest},now=Date.now()) {
   const record=state?.records?.['cto:civicline'];
   if (!charterValid(source) || !charterValid(live) || record?.status!=='active' ||
-      !record.authorityBoundary?.allowedActions?.includes('merge_green_pr') ||
+      !record.authorizedOperations?.includes('merge_green_pr') ||
       !record.evidenceRefs?.includes('civicline-merge-staging-grant-20260928') ||
       !state.evidence?.['civicline-merge-staging-grant-20260928']) return {allowed:false,reason:'authority_or_workstate'};
   const head=pr?.head?.sha, base=pr?.base?.sha;
@@ -77,7 +77,7 @@ export function checkCurrent(prNumber,proofFile,{sourceFile=defaultSource,liveFi
   if (!Number.isInteger(prNumber)||prNumber<1) throw new Error('invalid PR number');
   const source=read(sourceFile),live=read(liveFile),state=read(stateFile),proof=read(proofFile);
   if (!charterValid(source)||!charterValid(live)||
-      !state.records?.['cto:civicline']?.authorityBoundary?.allowedActions?.includes('merge_green_pr')||
+      !state.records?.['cto:civicline']?.authorizedOperations?.includes('merge_green_pr')||
       !state.records['cto:civicline'].evidenceRefs?.includes('civicline-merge-staging-grant-20260928')) return {allowed:false,reason:'authority_or_workstate'};
   const pr=JSON.parse(command(['api',`repos/${REPO}/pulls/${prNumber}`],runner));
   const checks=JSON.parse(command(['pr','checks',String(prNumber),'-R',REPO,'--json','name,bucket'],runner));
