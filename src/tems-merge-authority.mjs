@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 const TEMS_REPOSITORY = 'jgraham310/tems';
 const sourceCharter = resolve(homedir(), '.openclaw/repos/henry-operating-system/agents/tems-cto/CHARTER.json');
 const deployedCharter = resolve(homedir(), '.openclaw/workspace-tems-cto/CHARTER.json');
+const kernelStatePath = resolve(homedir(), '.openclaw/state/coding-control-kernel/state.json');
 
 export function assertTemsMergeAuthority(repository, charter) {
   if (repository !== TEMS_REPOSITORY) return;
@@ -21,7 +22,7 @@ export function assertTemsMergeAuthority(repository, charter) {
   }
 }
 
-export function assertTemsProtocolEvidence(repository, pr, head, evidence, now = Date.now()) {
+export function assertTemsProtocolEvidence(repository, pr, head, evidence, kernelState, now = Date.now()) {
   if (repository !== TEMS_REPOSITORY) return;
   const observed = Date.parse(evidence?.observedAt);
   const expires = Date.parse(evidence?.expiresAt);
@@ -38,14 +39,31 @@ export function assertTemsProtocolEvidence(repository, pr, head, evidence, now =
       observed > now || expires <= now || expires - observed > 30 * 60 * 1000) {
     throw new Error('current exact-head TEMS merge protocol evidence is missing or stale');
   }
+  const operation = kernelState?.operations?.find((entry) => entry.id === evidence.kernel_operation_id);
+  const item = kernelState?.prItems?.find((entry) => entry.id === evidence.work_item_id);
+  const verification = item?.evidence?.find((entry) => entry.type === 'verification_passed' &&
+    entry.commit === head && entry.observedAt === evidence.observedAt);
+  if (kernelState?.schema !== 'coding_control_kernel_state/v1' ||
+      !operation || operation.operation !== 'pr-observe' || operation.status !== 'applied' ||
+      operation.repository !== repository || operation.payload?.repository !== repository ||
+      operation.payload?.workItemId !== evidence.work_item_id ||
+      operation.payload?.event !== 'checks_passed' || operation.payload?.head !== head ||
+      operation.now !== evidence.observedAt || operation.result?.ok !== true ||
+      operation.result?.status !== 'verified' || operation.result?.head !== head ||
+      operation.result?.workItemId !== evidence.work_item_id ||
+      !item || item.repository !== repository || Number(item.pr) !== Number(pr) ||
+      item.head !== head || item.status !== 'verified' || !verification) {
+    throw new Error('TEMS merge protocol evidence has no matching kernel-issued verification');
+  }
 }
 
-export function assertCurrentTemsMergeAuthority(repository, charterPath = sourceCharter, deployedPath = deployedCharter, pr, head, evidencePath) {
+export function assertCurrentTemsMergeAuthority(repository, charterPath = sourceCharter, deployedPath = deployedCharter, pr, head, evidencePath, statePath = kernelStatePath) {
   if (repository !== TEMS_REPOSITORY) return;
   assertTemsMergeAuthority(repository, JSON.parse(readFileSync(charterPath, 'utf8')));
   assertTemsMergeAuthority(repository, JSON.parse(readFileSync(deployedPath, 'utf8')));
   if (!evidencePath) throw new Error('current exact-head TEMS merge protocol evidence is missing or stale');
-  assertTemsProtocolEvidence(repository, pr, head, JSON.parse(readFileSync(evidencePath, 'utf8')));
+  assertTemsProtocolEvidence(repository, pr, head, JSON.parse(readFileSync(evidencePath, 'utf8')),
+    JSON.parse(readFileSync(statePath, 'utf8')));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

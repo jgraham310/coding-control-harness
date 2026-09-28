@@ -27,19 +27,37 @@ try {
   writeFileSync(deployed, JSON.stringify(allowed));
   const head = '1234567890abcdef1234567890abcdef12345678';
   const proof = join(dir, 'protocol.json');
+  const statePath = join(dir, 'kernel-state.json');
   const now = Date.now();
   const valid = { kind: 'kernel_pr_verification', status: 'passed', repository: 'jgraham310/tems',
     pr: 654, head_sha: head, artifact: `git:${head}`, observer: 'coding-kernel',
-    observedAt: new Date(now - 1000).toISOString(), expiresAt: new Date(now + 60000).toISOString() };
+    observedAt: new Date(now - 1000).toISOString(), expiresAt: new Date(now + 60000).toISOString(),
+    kernel_operation_id: 'kop-test-1', work_item_id: 'issue-567' };
+  const operation = { id: valid.kernel_operation_id, operation: 'pr-observe', status: 'applied',
+    repository: valid.repository, payload: { repository: valid.repository, workItemId: valid.work_item_id,
+      event: 'checks_passed', head }, now: valid.observedAt,
+    result: { ok: true, status: 'verified', head, workItemId: valid.work_item_id } };
+  const item = { id: valid.work_item_id, repository: valid.repository, pr: valid.pr, head,
+    status: 'verified', evidence: [{ type: 'verification_passed', commit: head, observedAt: valid.observedAt }] };
+  const state = { schema: 'coding_control_kernel_state/v1', operations: [operation], prItems: [item] };
+  writeFileSync(statePath, JSON.stringify(state));
   assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head), /protocol evidence/);
   for (const invalid of [{ ...valid, head_sha: '0'.repeat(40) },
     { ...valid, pr: 655 }, { ...valid, status: 'pending' },
     { ...valid, expiresAt: new Date(now - 1000).toISOString() },
     { ...valid, observedAt: new Date(now + 60000).toISOString() }]) {
     writeFileSync(proof, JSON.stringify(invalid));
-    assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof), /protocol evidence/);
+    assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof, statePath), /protocol evidence/);
   }
   writeFileSync(proof, JSON.stringify(valid));
-  assert.doesNotThrow(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof));
+  assert.doesNotThrow(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof, statePath));
+  for (const forged of [{ ...valid, kernel_operation_id: 'kop-absent' },
+    { ...valid, work_item_id: 'issue-other' }]) {
+    writeFileSync(proof, JSON.stringify(forged));
+    assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof, statePath), /kernel-issued/);
+  }
+  writeFileSync(proof, JSON.stringify(valid));
+  writeFileSync(statePath, JSON.stringify({ ...state, operations: [{ ...operation, payload: { ...operation.payload, head: '0'.repeat(40) } }] }));
+  assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof, statePath), /kernel-issued/);
 } finally { rmSync(dir, { recursive: true, force: true }); }
 console.log('TEMS bounded merge authority tests: passed');

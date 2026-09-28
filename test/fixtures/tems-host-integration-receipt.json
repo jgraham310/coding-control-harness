@@ -1,13 +1,14 @@
 {
   "schemaVersion": 1,
-  "gate": "canonical-host-runner-presence-parity-revocation",
-  "observedAt": "2026-09-28T02:35:25.956Z",
+  "gate": "candidate-runner-contract-only",
+  "observedAt": "2026-09-28T02:44:28.926Z",
   "hashes": {
-    "src/tems-merge-authority.mjs": "dfc01acce01bd046ebf4766aa41ddb3284008f8cb7d7b3b2ed5ceece0c336e7c",
-    "test/tems-merge-authority.test.mjs": "c4e1c87e2e00ccfba12c33da6b80e87c06fbc97e8f7b692a2c39eec677394f51",
+    "package.json": "4d67718e72510b28becad95a452240b1c769a9655cffb5f3c2fe3158257f2a58",
+    "src/tems-merge-authority.mjs": "49f150b295355a07e55216c0bd525914dc9f7103b982af04b41a278dd59833e2",
+    "test/tems-merge-authority.test.mjs": "f31a4aaeb09ab6419f03bd0900e1395e864933090ffef807802e9ec30ffb3ab2",
     "test/live-portfolio-merge-runner.test.mjs": "63f7c4629d9b2b4cb3f7cf69518c3583cdd16599e465b2cd3579d7dc18a98893",
-    "test/live-portfolio-merge-runner.host.test.mjs": "9183b3c904186857a875f2f5c26dab9c9d73436f056a53e6263039ab20c01702",
+    "test/live-portfolio-merge-runner.host.test.mjs": "fb6c6cc0beda147ec670e9c67308127c72d17f60e25ae84526dc6950094d45ac",
     "test/fixtures/pr-merge-runner.mjs": "812e2e6fc5b0e02c1ce1d7c8ffbf81420172cb42dc66fb7ac6b6c196b06e57fa",
-    "scripts/publish-tems-host-status.py": "f0f857ef3e2cc3cbcb9370d970977bc929b085c5a77898eec9813c325e5f31ac"
+    "scripts/publish-tems-host-status.py": "6515bf549f5042b724efdba0039aa38d446c9321ece71fb4f840bfa1b38c34a4"
   }
 }

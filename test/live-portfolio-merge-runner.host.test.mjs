@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
@@ -6,10 +7,16 @@ import { spawnSync } from 'node:child_process';
 
 const liveRunner = resolve(homedir(), '.openclaw/workspace-cos/portfolio-control-pilot/bin/pr-merge-runner.mjs');
 const pinnedRunner = resolve('test/fixtures/pr-merge-runner.mjs');
+const liveGate = resolve(homedir(), '.openclaw/repos/coding-control-harness/src/tems-merge-authority.mjs');
+const candidateGate = resolve('src/tems-merge-authority.mjs');
 assert.ok(existsSync(liveRunner), `canonical host runner is required: ${liveRunner}`);
 assert.ok(existsSync(pinnedRunner), 'pinned runner fixture is required');
+assert.ok(existsSync(liveGate), `installed TEMS authority gate is required: ${liveGate}`);
 assert.equal(readFileSync(liveRunner, 'utf8'), readFileSync(pinnedRunner, 'utf8'),
   'canonical host runner drifted from the pinned contract');
+const digest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
+assert.equal(digest(liveGate), digest(candidateGate),
+  'installed TEMS authority gate has not integrated the exact candidate');
 const unmodified = spawnSync(process.execPath, [liveRunner, '--repo', 'jgraham310/tems',
   '--pr', '0', '--head', '0000000000000000000000000000000000000000'], { encoding: 'utf8' });
 assert.equal(unmodified.status, 1, 'unlisted synthetic PR must not merge');

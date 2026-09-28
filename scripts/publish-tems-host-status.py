@@ -49,10 +49,10 @@ def main():
         subprocess.run(["node", "test/live-portfolio-merge-runner.host.test.mjs"], cwd=ROOT, check=True)
         subprocess.run(["node", "test/host-integration-receipt.mjs", "verify"], cwd=ROOT, check=True)
         digest = hashlib.sha256(RECEIPT.read_bytes()).hexdigest()
-        publish("success", f"Canonical host runner passed; committed receipt sha256 {digest[:32]}")
+        publish("success", f"Live runner and installed gate passed; candidate receipt sha256 {digest[:32]}")
         print(json.dumps({"head": head, "context": CONTEXT, "state": "success", "receipt_sha256": digest}))
     except Exception:
-        publish("failure", "Canonical-host runner or exact-head receipt failed")
+        publish("failure", "Live runner, installed gate, or candidate receipt failed")
         raise
 
 
