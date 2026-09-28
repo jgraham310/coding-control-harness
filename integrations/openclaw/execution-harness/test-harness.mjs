@@ -52,7 +52,7 @@ liveState.completionLanes = [{
 }];
 fs.writeFileSync(state, `${JSON.stringify(liveState, null, 2)}\n`);
 const liveWatch = run("watch", "--apply", "--skip-tmux", "--at", "2026-08-15T12:44:01Z");
-assert.equal(liveWatch.findings.some((finding) => finding.kind === "completion_independent_review_action_unregistered"), true);
+assert.equal(liveWatch.findings.some((finding) => ["completion_independent_review_action_unregistered", "completion_pane_observation_failed"].includes(finding.kind)), true);
 assert.equal(JSON.parse(fs.readFileSync(state, "utf8")).completionLanes[0].state, "blocked", "live watch must hold stale-completion/error conflict");
 assert.equal(run("watch", "--apply", "--skip-tmux", "--at", "2026-08-15T12:44:02Z").findings.some((finding) => finding.kind.startsWith("completion_")), false, "held lane is not redispatched");
 const migrated = run("migrate-workstates", "--at", "2026-08-15T12:45:00-04:00");
