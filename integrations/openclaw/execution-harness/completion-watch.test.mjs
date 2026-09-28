@@ -32,6 +32,16 @@ assert.equal(reconcileCompletionLanes(pendingState, options)[0].kind, "completio
 assert.equal(pendingState.completionLanes[0].state, "blocked");
 assert.equal(dispatches, 1, "uncertain launch never duplicates a command");
 
+const recoverableState = { completionLanes: [{ ...structuredClone(state.completionLanes[0]), state: "recovering",
+  lastDispatch: { ...state.completionLanes[0].lastDispatch, launchStatus: "pending", pid: undefined } }] };
+assert.equal(reconcileCompletionLanes(recoverableState, { ...options, recoverReservation: () => true })[0].kind, "completion_preclaim_reservation_recovered");
+assert.equal(recoverableState.completionLanes[0].state, "executing");
+assert.equal(recoverableState.completionLanes[0].retry.attempts, 0);
+assert.equal(recoverableState.completionLanes[0].lastDispatch, undefined);
+assert.equal(dispatches, 1, "preclaim recovery does not launch in the same observation");
+assert.equal(reconcileCompletionLanes(recoverableState, options)[0].kind, "completion_command_rejected");
+assert.equal(dispatches, 2, "a later observation may consume the still-unclaimed grant");
+
 const monitoringState = { completionLanes: [{ ...structuredClone(lane), state: "executing", lastDispatch: { launchStatus: "launched", pid: 456 } }] };
 assert.equal(reconcileCompletionLanes(monitoringState, { ...options, observe: () => ({ pane: "executing" }), authorizeDispatch: () => false }).length, 0, "revoked grant does not stop active outcome monitoring");
 assert.equal(monitoringState.completionLanes[0].state, "executing");
@@ -41,7 +51,7 @@ assert.equal(monitoringState.completionLanes[0].state, "completed");
 const deniedState = { completionLanes: [structuredClone(lane)] };
 assert.equal(reconcileCompletionLanes(deniedState, { ...options, authorizeDispatch: () => false })[0].kind, "completion_workstate_grant_missing");
 assert.equal(deniedState.completionLanes[0].state, "blocked");
-assert.equal(dispatches, 1, "stale WorkState cannot dispatch");
+assert.equal(dispatches, 2, "stale WorkState cannot dispatch");
 
 const reviewState = { completionLanes: [{ ...structuredClone(lane), reviewRequired: true, headSha: "a".repeat(40),
   nextAction: { kind: "independent_review", registrationId: "x", reviewer: "codex", headSha: "a".repeat(40), argv: ["/bin/echo", "review"] } }] };
@@ -49,7 +59,7 @@ const staleCompletion = { pane: "executing", completedEvidence: true, error: "MO
 const held = reconcileCompletionLanes(reviewState, { ...options, observe: () => staleCompletion, registrationLoader: () => null });
 assert.equal(held[0].kind, "completion_independent_review_action_unregistered");
 assert.equal(reviewState.completionLanes[0].state, "blocked");
-assert.equal(dispatches, 1);
+assert.equal(dispatches, 2);
 assert.equal(reconcileCompletionLanes(reviewState, { ...options, observe: () => staleCompletion }).length, 0, "held lane is terminal until explicit state transition");
 assert.equal(observeCompletionLane(lane, { capture: () => { throw new Error("tmux timeout"); }, listSessions: () => lane.sessionName }).blockedReason, "pane_observation_failed");
 assert.equal(observeCompletionLane(lane, { capture: () => { throw new Error("tmux offline"); }, listSessions: () => { throw new Error("server offline"); } }).blockedReason, "pane_observation_failed");

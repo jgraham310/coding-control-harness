@@ -50,6 +50,16 @@ export function hasCompletionGrant(runtime, lane, version = lane.workStateVersio
   return !!matchingCompletionGrant(runtime, lane, version);
 }
 
+export function canRecoverUnclaimedReservation(file, lane, { validate = validateRuntime, verifyWorktree = verifyExactWorktree } = {}) {
+  const release = acquireStateLock(file);
+  try {
+    const runtime = JSON.parse(fs.readFileSync(file, "utf8"));
+    validate(runtime);
+    return !!matchingCompletionGrant(runtime, lane) && verifyWorktree(lane);
+  } catch { return false; }
+  finally { release(); }
+}
+
 export function withCompletionGrant(file, lane, reserve, launch, { validate = validateRuntime, verifyWorktree = verifyExactWorktree } = {}) {
   const release = acquireStateLock(file);
   try {

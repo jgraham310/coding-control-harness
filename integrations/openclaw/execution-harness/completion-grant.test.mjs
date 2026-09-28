@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { hasCompletionGrant, withCompletionGrant, verifyExactWorktree } from "./completion-grant.mjs";
+import { hasCompletionGrant, withCompletionGrant, canRecoverUnclaimedReservation, verifyExactWorktree } from "./completion-grant.mjs";
 import { emptyRuntime, recordEvidence, registerWorkState, validateRuntime } from "./work-state.mjs";
 const head = "a".repeat(40);
 const lane = { id: "civicline-2712-review", issue: 2712, repository: "jgraham310/local-government", workStateId: "cto:civicline", workStateVersion: 51,
@@ -78,6 +78,8 @@ fullRuntime.actions.grant = { id: "grant", workStateId: "cto:civicline", stateVe
 assert.equal(validateRuntime(fullRuntime), true);
 const fullFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "completion-full-runtime-")), "work-state.json");
 fs.writeFileSync(fullFile, JSON.stringify(fullRuntime));
+assert.equal(canRecoverUnclaimedReservation(fullFile, actualLane), true, "unclaimed exact grant is recoverable");
 assert.equal(withCompletionGrant(fullFile, actualLane, () => true, () => true), true, "real runtime and clean checkout authorize one launch");
+assert.equal(canRecoverUnclaimedReservation(fullFile, actualLane), false, "claimed grant cannot be recovered");
 assert.equal(withCompletionGrant(fullFile, actualLane, () => true, () => true), false, "durable claim blocks second state file");
 console.log("completion WorkState grant tests: passed");
