@@ -31,12 +31,13 @@ function append(char) {
   if (/\p{Emoji_Modifier}/u.test(char) && /\p{Emoji}/u.test(lastBase)) width = 0;
   if (/\p{Regional_Indicator}/u.test(char)) {
     width = regionalIndicatorPending ? 0 : 2;
-    regionalIndicatorPending = !regionalIndicatorPending;
-  } else if (!/\p{Mark}/u.test(char)) regionalIndicatorPending = false;
+  }
   if (char === '\ufe0f' && lastBaseWidth === 1 && /\p{Emoji}/u.test(lastBase)) { width = 1; lastBaseWidth = 2; }
   if (char === '\ufe0e' && lastBaseWidth === 2 && /\p{Emoji}/u.test(lastBase)) { width = -1; lastBaseWidth = 1; }
   if (width && (column > paneWidth || (width > 1 && column + width - 1 > paneWidth))) { row++; column = 1; boundary(); }
   if (segment.length >= 4096) return;
+  if (/\p{Regional_Indicator}/u.test(char)) regionalIndicatorPending = !regionalIndicatorPending;
+  else if (!/\p{Mark}/u.test(char)) regionalIndicatorPending = false;
   segment += char;
   column = Math.max(1, column + width);
   if (!/\p{Mark}/u.test(char)) { lastBase = char; lastBaseWidth = width; }

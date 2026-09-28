@@ -66,6 +66,7 @@ assert.equal(execFileSync('node', [streamFilter], { input: '🇺🇸\x1b[1DError
 assert.equal(execFileSync('node', [streamFilter], { input: '🇺🇸🇨🇦\x1b[4DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'successive regional-indicator pairs each occupy two cells');
 assert.equal(execFileSync('node', [streamFilter], { input: '👍🏽\x1b[2DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'emoji modifier remains within one two-cell grapheme');
 assert.equal(execFileSync('node', [streamFilter], { input: '👩‍💻\x1b[2DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'ZWJ emoji sequence remains one two-cell grapheme');
+assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(79) + '🇺🇸\x1b[2DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'regional pair survives an implicit wrap at the pane edge');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
