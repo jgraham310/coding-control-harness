@@ -16,7 +16,7 @@ import { acquireStateLock } from "./state-lock.mjs";
 import { reconcileCompletionLanes } from "./completion-watch.mjs";
 import { validateLane } from "../../../src/completion-controller.mjs";
 import { loadReviewRegistration } from "../../../src/review-registration.mjs";
-import { hasCompletionGrant, withCompletionGrant } from "./completion-grant.mjs";
+import { hasCompletionGrant, withCompletionGrant, verifyExactWorktree } from "./completion-grant.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultState = process.env.EXECUTION_HARNESS_STATE || path.join(here, "execution-state.json");
@@ -506,9 +506,7 @@ if (command === "status") {
   catch (error) { fail(`Canonical WorkState unavailable: ${error.message}`); }
   const work = workRuntime.records[contract.workStateId];
   if (!hasCompletionGrant(workRuntime, contract, expectedVersion)) fail("Canonical WorkState lacks an exact-lane retry_safe grant at the expected version.");
-  const head = execFileSync("git", ["-C", contract.worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-  const dirty = execFileSync("git", ["-C", contract.worktree, "status", "--porcelain"], { encoding: "utf8" }).trim();
-  if (head !== contract.headSha || dirty) fail("Completion worktree is dirty or not at the contracted exact head.");
+  if (!verifyExactWorktree(contract)) fail("Completion worktree is dirty or not at the contracted exact head.");
   if (contract.reviewRequired && !loadReviewRegistration(contract)) fail("No authenticated independent review action is registered for this exact head.");
   state.completionLanes ??= [];
   const registered = { ...contract, state: "executing", registeredAt: now(), workStateVersion: expectedVersion,
@@ -517,7 +515,7 @@ if (command === "status") {
   if (priorCompletion) state.completionLanes[state.completionLanes.indexOf(priorCompletion)] = registered;
   else state.completionLanes.push(registered);
   save(stateFile, state);
-  print({ registered: contract.id, headSha: head, workStateId: contract.workStateId, workStateVersion: expectedVersion });
+  print({ registered: contract.id, headSha: contract.headSha, workStateId: contract.workStateId, workStateVersion: expectedVersion });
 } else if (command === "register-lane") {
   const id = arg("--id");
   const repository = arg("--repository");
