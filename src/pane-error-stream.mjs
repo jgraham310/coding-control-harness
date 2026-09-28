@@ -1,37 +1,50 @@
 #!/usr/bin/env node
-// Consume tmux's fresh output without retaining raw pane text in the state tree.
-// A stable marker per explicit error gives the watch path a monotonic byte offset.
+// Filter fresh tmux bytes to a monotonic stream of bounded error markers.
+// Raw pane output is never written to the durable state directory.
 import { detectPaneError } from './completion-controller.mjs';
 
-let pending = '';
+let segment = '';
 let matched = false;
-function accept(line) {
-  // pipe-pane receives terminal bytes, not capture-pane's rendered text.
-  // Cursor repositioning starts a new visual segment; color/erase/title
-  // controls must not hide a start-anchored error from the classifier.
-  const rendered = line
-    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
-    .replace(/\x1b\[[0-9;?]*[HfGdEF]/g, '\n')
-    .replace(/\x9b[0-9;?]*[HfGdEF]/g, '\n')
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
-    .replace(/\x9b[0-?]*[ -/]*[@-~]/g, '')
-    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
-  if (!matched && detectPaneError(rendered)) {
+let mode = 'text';
+let csi = '';
+function boundary() { segment = ''; matched = false; }
+function append(byte) {
+  if (segment.length >= 4096) return;
+  segment += String.fromCharCode(byte);
+  if (!matched && detectPaneError(segment)) {
     process.stdout.write('hook_module_not_found\n');
     matched = true;
   }
 }
-process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => {
-  pending += chunk;
-  let end = pending.search(/[\r\n]/);
-  while (end !== -1) {
-    accept(pending.slice(0, end).slice(0, 4096));
-    pending = pending.slice(end + 1);
-    matched = false;
-    end = pending.search(/[\r\n]/);
+  for (const byte of chunk) {
+    if (mode === 'osc') {
+      if (byte === 0x07) mode = 'text';
+      else if (byte === 0x1b) mode = 'osc-esc';
+      continue;
+    }
+    if (mode === 'osc-esc') {
+      mode = byte === 0x5c ? 'text' : 'osc';
+      continue;
+    }
+    if (mode === 'esc') {
+      mode = byte === 0x5b ? 'csi' : byte === 0x5d ? 'osc' : 'text';
+      csi = '';
+      continue;
+    }
+    if (mode === 'csi') {
+      if (byte >= 0x40 && byte <= 0x7e) {
+        const final = String.fromCharCode(byte);
+        if ('HfGdEF'.includes(final) || (final === 'K' && /^[02]?$/.test(csi))) boundary();
+        mode = 'text';
+      } else if (csi.length < 32) csi += String.fromCharCode(byte);
+      else mode = 'text';
+      continue;
+    }
+    if (byte === 0x1b) { mode = 'esc'; continue; }
+    if (byte === 0x9b) { mode = 'csi'; csi = ''; continue; }
+    if (byte === 0x0d || byte === 0x0a) { boundary(); continue; }
+    if (byte === 0x08) { segment = segment.slice(0, -1); matched = false; continue; }
+    if (byte >= 0x20 && byte <= 0x7e) append(byte);
   }
-  accept(pending.slice(0, 4096));
-  if (pending.length > 4096) pending = '';
 });
-process.stdin.on('end', () => { if (pending) accept(pending.slice(0, 4096)); });

@@ -16,9 +16,9 @@ const tmux = path.join(fakeBin, 'tmux');
 fs.writeFileSync(tmux, `#!/bin/sh
 case "$1" in
   has-session) exit 0 ;;
-  display-message) if [ "$5" = '#{pane_pipe}' ]; then if [ -f "$TEST_PIPE_MARKER" ]; then echo 1; else echo 0; fi; else printf '%s\\n' "$TEST_WORKTREE"; fi ;;
+  display-message) if [ "$5" = '#{pane_pipe}' ]; then if [ -f "$TEST_PIPE_MARKER.$4" ]; then echo 1; else echo 0; fi; else printf '%s\\n' "$TEST_WORKTREE"; fi ;;
   capture-pane) cat "$TEST_PANE_FILE" ;;
-  pipe-pane) touch "$TEST_PIPE_MARKER" ;;
+  pipe-pane) previous=''; target=''; for part in "$@"; do if [ "$previous" = '-t' ]; then target="$part"; fi; previous="$part"; done; if [ "$2" = '-t' ]; then rm -f "$TEST_PIPE_MARKER.$target"; else touch "$TEST_PIPE_MARKER.$target"; fi ;;
   list-sessions) exit 0 ;;
 esac
 `);
@@ -33,6 +33,8 @@ assert.equal(execFileSync('node', [streamFilter], { input: "secret=not-an-error\
 assert.equal(execFileSync('node', [streamFilter], { input: "A prior Error: Cannot find module is only prose\n\x1b[31mError: Cannot find module '/deleted/hook.js'\x1b[0m\nold prompt\r\x1b[2KError: Cannot find module '/deleted/hook.js'\n", encoding: 'utf8' }), 'hook_module_not_found\nhook_module_not_found\n', 'colored and cursor-repainted terminal errors become bounded markers without accepting prose');
 assert.equal(execFileSync('node', [streamFilter], { input: "old prompt\x1b[1E\x1b[2KError: Cannot find module '/deleted/hook.js'", encoding: 'utf8' }), 'hook_module_not_found\n', 'CSI next-line moves create a visual boundary without a newline');
 assert.equal(execFileSync('node', [streamFilter], { input: "old prompt\x9b1E\x9b2KError: Cannot find module '/deleted/hook.js'", encoding: 'utf8' }), 'hook_module_not_found\n', 'eight-bit CSI next-line moves create the same boundary');
+assert.equal(execFileSync('node', [streamFilter], { input: Buffer.concat([Buffer.from('old prompt'), Buffer.from([0x9b]), Buffer.from("1EError: Cannot find module '/deleted/hook.js'")]), encoding: 'utf8' }), 'hook_module_not_found\n', 'raw 8-bit CSI bytes survive terminal parsing');
+assert.equal(execFileSync('node', [streamFilter], { input: "Error: Cannot find module first\x1b[1EError: Cannot find module second", encoding: 'utf8' }), 'hook_module_not_found\nhook_module_not_found\n', 'CSI visual boundaries reset marker deduplication without CR or LF');
 assert.equal(execFileSync('node', [streamFilter], { input: "old prompt\rError: Cannot find module '/deleted/hook.js'", encoding: 'utf8' }), 'hook_module_not_found\n', 'CR-only repaint is detected before a newline');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
@@ -47,7 +49,7 @@ const fixture = { schemaVersion: 2, portfolio: { repositories: [{ id: 'tems', re
 const env = { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, TEST_WORKTREE: root, TEST_PANE_FILE: paneFile, TEST_PIPE_MARKER: pipeMarker };
 const write = (value) => fs.writeFileSync(stateFile, JSON.stringify(value));
 const run = (at) => JSON.parse(execFileSync('node', [harness, 'watch', '--apply', '--auto-recover', '--state', stateFile, '--skip-github', '--skip-staging', '--at', at], { encoding: 'utf8', env, cwd: root }));
-const command = (...args) => JSON.parse(execFileSync('node', [harness, ...args, '--state', stateFile, '--at', '2026-09-28T19:12:00Z'], { encoding: 'utf8', env, cwd: root }));
+const command = (...args) => JSON.parse(execFileSync('node', [harness, ...args, '--state', path.relative(root, stateFile), '--at', '2026-09-28T19:12:00Z'], { encoding: 'utf8', env, cwd: root }));
 try {
   write(fixture);
   const first = run('2026-09-28T19:10:00Z');
@@ -95,11 +97,12 @@ try {
   assert.throws(() => command('attach-development', '--issue', '566', '--tmux-session', 'fake', '--tmux-pane', 'fake:0.0', '--evidence', 'Attempted reattach without capture.', '--heartbeat-due', '2099-01-01T00:00:00Z'), /Command failed/, 'reattach also fails closed without pane capture');
   fs.renameSync(`${paneFile}.unavailable`, paneFile);
   assert.equal(JSON.parse(fs.readFileSync(stateFile)).lanes[0].dispatch.errorHold !== null, true);
-  fs.rmSync(pipeMarker);
   command('attach-development', '--issue', '566', '--tmux-session', 'fake', '--tmux-pane', 'fake:1.0', '--evidence', 'Operator moved the sole lane to a new pane.', '--heartbeat-due', '2099-01-01T00:00:00Z');
   stored = JSON.parse(fs.readFileSync(stateFile));
   assert.equal(stored.lanes[0].dispatch.paneStream.pane, 'fake:1.0');
   assert.notEqual(stored.lanes[0].dispatch.paneStream.path, streamFile);
+  assert.equal(fs.existsSync(`${pipeMarker}.fake:0.0`), false, 'old pane pipe is closed on switch');
+  assert.equal(fs.existsSync(`${pipeMarker}.fake:1.0`), true, 'new pane pipe is active');
   assert.equal(run('2026-09-28T19:12:06Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'new pane does not inherit stale output monitor');
   fs.appendFileSync(stored.lanes[0].dispatch.paneStream.path, 'hook_module_not_found\n');
   assert.equal(run('2026-09-28T19:12:07Z').findings.some((entry) => entry.kind === 'development_lane_error'), true, 'fresh new-pane error still holds');

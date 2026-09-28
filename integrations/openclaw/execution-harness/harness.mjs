@@ -359,7 +359,7 @@ function rearmPaneStream(item) {
     catch { fail(`Cannot rearm #${item.issue}; the pane output stream is unavailable.`); }
   }
   if (panePipeActive(item.dispatch.pane)) fail(`Cannot rearm #${item.issue}; the pane already has another output pipe.`);
-  const streamPath = `${stateFile}.${item.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.${Date.now()}.pane-output`;
+  const streamPath = `${path.resolve(stateFile)}.${item.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.${Date.now()}.pane-output`;
   try {
     fs.closeSync(fs.openSync(streamPath, "wx", 0o600));
     const quoted = `'${streamPath.replace(/'/g, "'\\''")}'`;
@@ -726,6 +726,19 @@ if (command === "status") {
   if (heldError || item.dispatch.paneStream) {
     const { stream } = rearmPaneStream({ ...item, dispatch: attachment });
     attachment.paneStream = stream;
+  }
+  const previousStream = item.dispatch.paneStream;
+  if (previousStream && previousStream.pane !== observed.target && panePipeActive(previousStream.pane)) {
+    try {
+      execFileSync("tmux", ["pipe-pane", "-t", previousStream.pane], { timeout: 5000 });
+      if (panePipeActive(previousStream.pane)) throw new Error("old pane output pipe remains active");
+      try { fs.unlinkSync(previousStream.path); } catch {}
+    } catch (error) {
+      if (attachment.paneStream) {
+        try { execFileSync("tmux", ["pipe-pane", "-t", observed.target], { timeout: 5000 }); } catch {}
+      }
+      fail(`Cannot attach #${item.issue}; old pane output pipe could not be closed: ${error.message}`);
+    }
   }
   item.dispatch = { ...attachment, errorHold: null, paneBaseline: baseline };
   item.phase = "implementing";
