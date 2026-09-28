@@ -52,6 +52,7 @@ assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(85) 
 assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[79DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'cursor-left cancels pending autowrap at the final visible column');
 assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[78DError: Cannot find module x', encoding: 'utf8' }), '', 'pending-wrap cursor-left stopping at column two retains prefix');
 assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[5C\x1b[79DError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'cursor-right at pane edge clamps before subsequent cursor-left');
+assert.equal(execFileSync('node', [streamFilter, '80'], { input: 'x'.repeat(80) + '\x1b[1BError: Cannot find module x', encoding: 'utf8' }), '', 'vertical cursor move cancels pending wrap without inventing an anchored error');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
@@ -145,6 +146,13 @@ try {
   env.TEST_PANE_WIDTH = '40';
   write({ ...fixture, lanes: [{ ...lane, phase: 'implementing', blocker: null, dispatch: { ...stored.lanes[0].dispatch, errorHold: null } }] });
   assert.equal(run('2026-09-28T19:12:09Z').findings.some((entry) => entry.kind === 'development_lane_error' && entry.evidence.includes('pane_output_monitor_unavailable')), true, 'pane resize fails closed until the width-bound monitor is replaced');
+  const priorWidthStream = stored.lanes[0].dispatch.paneStream.path;
+  command('transition', '--issue', '566', '--to', 'implementing', '--evidence', 'Operator explicitly rearmed after pane resize.', '--heartbeat-due', '2099-01-01T00:00:00Z');
+  stored = JSON.parse(fs.readFileSync(stateFile));
+  assert.equal(stored.lanes[0].dispatch.paneStream.width, 40, 'explicit rearm binds the new pane width');
+  assert.notEqual(stored.lanes[0].dispatch.paneStream.path, priorWidthStream, 'explicit rearm replaces the old pipe stream');
+  assert.equal(fs.existsSync(priorWidthStream), false, 'replaced stream is retired');
+  assert.equal(stored.lanes[0].dispatch.errorHold, null, 'resize hold clears only after a fresh monitor is active');
   delete env.TEST_PANE_WIDTH;
 
   write({ ...fixture, lanes: [{ ...lane, blocker: 'approval required' }] });

@@ -360,13 +360,16 @@ function rearmPaneStream(item) {
   const existing = item.dispatch.paneStream;
   if (existing?.pane === item.dispatch.pane && panePipeActive(item.dispatch.pane)) {
     try {
-      if (!existing.width || paneWidth(existing.pane) !== existing.width) fail(`Cannot rearm #${item.issue}; pane width changed and the output monitor must be replaced.`);
-      const offset = fs.statSync(existing.path).size;
-      const snapshot = paneSnapshot(item);
-      if (!snapshot) fail(`Cannot rearm #${item.issue}; the attached pane could not be captured for a fresh-output baseline.`);
-      return { snapshot, stream: { ...existing, offset } };
+      if (existing.width && paneWidth(existing.pane) === existing.width) {
+        const offset = fs.statSync(existing.path).size;
+        const snapshot = paneSnapshot(item);
+        if (!snapshot) fail(`Cannot rearm #${item.issue}; the attached pane could not be captured for a fresh-output baseline.`);
+        return { snapshot, stream: { ...existing, offset } };
+      }
+      execFileSync("tmux", ["pipe-pane", "-t", existing.pane], { timeout: 5000 });
+      if (panePipeActive(existing.pane)) throw new Error("old width-bound output pipe remains active");
     }
-    catch { fail(`Cannot rearm #${item.issue}; the pane output stream is unavailable.`); }
+    catch (error) { fail(`Cannot rearm #${item.issue}; the pane output stream is unavailable: ${error.message}`); }
   }
   if (panePipeActive(item.dispatch.pane)) fail(`Cannot rearm #${item.issue}; the pane already has another output pipe.`);
   const width = paneWidth(item.dispatch.pane);
@@ -382,6 +385,9 @@ function rearmPaneStream(item) {
     if (paneWidth(item.dispatch.pane) !== width) throw new Error("pane width changed during output monitor installation");
     const snapshot = paneSnapshot(item);
     if (!snapshot) throw new Error("attached pane could not be captured for a fresh-output baseline");
+    if (existing?.pane === item.dispatch.pane) {
+      try { fs.unlinkSync(existing.path); } catch {}
+    }
     return { snapshot, stream: { pane: item.dispatch.pane, path: streamPath, offset: 0, width } };
   } catch (error) {
     if (panePipeActive(item.dispatch.pane)) {

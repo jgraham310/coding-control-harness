@@ -43,17 +43,17 @@ process.stdin.on('data', (chunk) => {
         const final = String.fromCharCode(byte);
         const params = csi.split(';');
         const positive = (value) => Math.max(1, Number(value || 1) || 1);
+        if ('ABCDEFGHfd'.includes(final)) column = Math.min(column, paneWidth);
         if (final === 'E' || final === 'F') {
           row = Math.max(1, row + (final === 'E' ? 1 : -1) * positive(params[0]));
           column = 1;
           boundary();
+        } else if (final === 'A' || final === 'B') {
+          row = Math.max(1, row + (final === 'B' ? 1 : -1) * positive(params[0]));
         } else if (final === 'G') {
           column = Math.min(paneWidth, positive(params[0]));
           if (column === 1) boundary();
         } else if (final === 'D' || final === 'C') {
-          // A full-width print leaves autowrap pending at the last visible
-          // column; a cursor-control sequence cancels that pending wrap.
-          if (column > paneWidth) column = paneWidth;
           column = final === 'D' ? Math.max(1, column - positive(params[0])) : Math.min(paneWidth, column + positive(params[0]));
           if (final === 'D' && column === 1) boundary();
         } else if (final === 'H' || final === 'f') {
