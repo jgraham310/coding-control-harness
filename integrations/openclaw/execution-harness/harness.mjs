@@ -720,11 +720,19 @@ if (command === "status") {
   item.tmuxSession = session;
   const attachment = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at, laneError: null };
   if (attachment.paneStream?.pane !== observed.target) attachment.paneStream = null;
-  const baseline = paneSnapshot({ dispatch: attachment });
-  if (!baseline) fail(`Cannot attach #${item.issue}; the pane could not be captured for a fresh-output baseline.`);
-  const initialError = item.dispatch.status === "ready" ? detectPaneError(baseline.lines.join("\n")) : "";
   const { stream } = rearmPaneStream({ ...item, dispatch: attachment });
   attachment.paneStream = stream;
+  // Install the pipe before the final classified capture: bytes emitted in
+  // between are then visible in either that capture or the fresh stream.
+  const baseline = paneSnapshot({ dispatch: attachment });
+  if (!baseline) {
+    if (stream.path !== item.dispatch.paneStream?.path) {
+      try { execFileSync("tmux", ["pipe-pane", "-t", observed.target], { timeout: 5000 }); } catch {}
+      try { fs.unlinkSync(stream.path); } catch {}
+    }
+    fail(`Cannot attach #${item.issue}; the pane could not be captured for a fresh-output baseline.`);
+  }
+  const initialError = item.dispatch.status === "ready" ? detectPaneError(baseline.lines.join("\n")) : "";
   const previousStream = item.dispatch.paneStream;
   if (previousStream && previousStream.pane !== observed.target && panePipeActive(previousStream.pane)) {
     try {

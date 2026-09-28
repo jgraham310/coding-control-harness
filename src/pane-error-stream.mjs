@@ -7,10 +7,13 @@ let segment = '';
 let matched = false;
 let mode = 'text';
 let csi = '';
+let row = 1;
+let column = 1;
 function boundary() { segment = ''; matched = false; }
 function append(byte) {
   if (segment.length >= 4096) return;
   segment += String.fromCharCode(byte);
+  column++;
   if (!matched && detectPaneError(segment)) {
     process.stdout.write('hook_module_not_found\n');
     matched = true;
@@ -35,7 +38,26 @@ process.stdin.on('data', (chunk) => {
     if (mode === 'csi') {
       if (byte >= 0x40 && byte <= 0x7e) {
         const final = String.fromCharCode(byte);
-        if ('HfGdEF'.includes(final) || (final === 'K' && csi === '2')) boundary();
+        const params = csi.split(';');
+        const positive = (value) => Math.max(1, Number(value || 1) || 1);
+        if (final === 'E' || final === 'F') {
+          row = Math.max(1, row + (final === 'E' ? 1 : -1) * positive(params[0]));
+          column = 1;
+          boundary();
+        } else if (final === 'G') {
+          column = positive(params[0]);
+          if (column === 1) boundary();
+        } else if (final === 'H' || final === 'f') {
+          const nextRow = positive(params[0]);
+          const nextColumn = positive(params[1]);
+          if (nextRow !== row || nextColumn === 1) boundary();
+          row = nextRow;
+          column = nextColumn;
+        } else if (final === 'd') {
+          const nextRow = positive(params[0]);
+          if (nextRow !== row) boundary();
+          row = nextRow;
+        } else if (final === 'K' && ['1', '2'].includes(csi)) boundary();
         mode = 'text';
       } else if (csi.length < 32) csi += String.fromCharCode(byte);
       else mode = 'text';
@@ -43,12 +65,8 @@ process.stdin.on('data', (chunk) => {
     }
     if (byte === 0x1b) { mode = 'esc'; continue; }
     if (byte === 0x9b) { mode = 'csi'; csi = ''; continue; }
-    if (byte === 0x0d || byte === 0x0a) { boundary(); continue; }
-    if (byte === 0x08) {
-      segment = segment.slice(0, -1);
-      if (!detectPaneError(segment)) matched = false;
-      continue;
-    }
+    if (byte === 0x0d || byte === 0x0a) { if (byte === 0x0a) row++; column = 1; boundary(); continue; }
+    if (byte === 0x08) { segment = segment.slice(0, -1); column = Math.max(1, column - 1); continue; }
     if (byte >= 0x20 && byte <= 0x7e) append(byte);
   }
 });

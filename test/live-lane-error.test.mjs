@@ -18,7 +18,7 @@ case "$1" in
   has-session) exit 0 ;;
   display-message) if [ "$5" = '#{pane_pipe}' ]; then if [ -f "$TEST_PIPE_MARKER.$4" ]; then echo 1; else echo 0; fi; else printf '%s\\n' "$TEST_WORKTREE"; fi ;;
   capture-pane) cat "$TEST_PANE_FILE" ;;
-  pipe-pane) previous=''; target=''; for part in "$@"; do if [ "$previous" = '-t' ]; then target="$part"; fi; previous="$part"; done; if [ "$2" = '-t' ]; then rm -f "$TEST_PIPE_MARKER.$target"; else touch "$TEST_PIPE_MARKER.$target"; fi ;;
+  pipe-pane) previous=''; target=''; for part in "$@"; do if [ "$previous" = '-t' ]; then target="$part"; fi; previous="$part"; done; if [ "$2" = '-t' ]; then rm -f "$TEST_PIPE_MARKER.$target"; else touch "$TEST_PIPE_MARKER.$target"; if [ "$target" = "$TEST_INJECT_ON_PIPE" ]; then printf 'Error: Cannot find module /race/hook.js\\n' >> "$TEST_PANE_FILE"; fi; fi ;;
   list-sessions) exit 0 ;;
 esac
 `);
@@ -37,8 +37,13 @@ assert.equal(execFileSync('node', [streamFilter], { input: Buffer.concat([Buffer
 assert.equal(execFileSync('node', [streamFilter], { input: "Error: Cannot find module first\x1b[1EError: Cannot find module second", encoding: 'utf8' }), 'hook_module_not_found\nhook_module_not_found\n', 'CSI visual boundaries reset marker deduplication without CR or LF');
 assert.equal(execFileSync('node', [streamFilter], { input: "old prompt\rError: Cannot find module '/deleted/hook.js'", encoding: 'utf8' }), 'hook_module_not_found\n', 'CR-only repaint is detected before a newline');
 assert.equal(execFileSync('node', [streamFilter], { input: 'Error: Cannot find module x\bX', encoding: 'utf8' }), 'hook_module_not_found\n', 'backspace repaint stays deduplicated within one visual segment');
+assert.equal(execFileSync('node', [streamFilter], { input: 'Error: Cannot find module\b\ble', encoding: 'utf8' }), 'hook_module_not_found\n', 'backspacing through the match does not emit a second same-line marker');
 assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[0KError: Cannot find module x', encoding: 'utf8' }), '', 'erase-to-end does not remove a visible prefix');
+assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[1KError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'erase-to-beginning removes the visible prefix');
 assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[2KError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'erase-entire-line clears the visual prefix');
+assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[5GError: Cannot find module x', encoding: 'utf8' }), '', 'column-five movement leaves a visible prefix');
+assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[1;5HError: Cannot find module x', encoding: 'utf8' }), '', 'same-row column-five movement leaves a visible prefix');
+assert.equal(execFileSync('node', [streamFilter], { input: 'old prompt\x1b[2;5HError: Cannot find module x', encoding: 'utf8' }), 'hook_module_not_found\n', 'moving to a different visual row starts fresh classification');
 const lane = {
   id: 'tems-566', issue: 566, repository: 'jgraham310/tems', phase: 'implementing', active: true,
   adapter: 'development', owner: 'Claude Code', worktree: root, successPredicate: 'synthetic evidence',
@@ -117,6 +122,14 @@ try {
   assert.equal(stored.lanes[0].dispatch.paneStream.pane, 'fake:2.0', 'first attachment starts a fresh-output monitor');
   assert.equal(stored.events.filter((entry) => entry.kind === 'development_lane_error').length, 1);
   assert.equal(run('2026-09-28T19:12:08Z').findings.some((entry) => entry.kind === 'development_lane_error'), false, 'first-attach hold is durable across repeat watch');
+  fs.writeFileSync(paneFile, 'healthy pane before monitor installation\n');
+  env.TEST_INJECT_ON_PIPE = 'fake:3.0';
+  write({ ...fixture, lanes: [{ ...lane, phase: 'identified', dispatch: { ...lane.dispatch, status: 'ready' } }] });
+  command('attach-development', '--issue', '566', '--tmux-session', 'fake', '--tmux-pane', 'fake:3.0', '--evidence', 'First attachment while executor emits an error.', '--heartbeat-due', '2099-01-01T00:00:00Z');
+  delete env.TEST_INJECT_ON_PIPE;
+  stored = JSON.parse(fs.readFileSync(stateFile));
+  assert.equal(stored.lanes[0].phase, 'stalled', 'error between pipe installation and final capture is held');
+  assert.equal(stored.events.filter((entry) => entry.kind === 'development_lane_error').length, 1);
 
   write({ ...fixture, lanes: [{ ...lane, blocker: 'approval required' }] });
   assert.equal(run('2026-09-28T19:12:00Z').findings.some((entry) => entry.kind === 'development_lane_error'), false);
