@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 const ROOT = new URL('..', import.meta.url).pathname;
 const ALLOWLIST = join(ROOT, 'policy', 'auto-merge-allowlist.json');
 const TEMS_AUTHORITY_GATE = '/Users/jasongraham/.openclaw/repos/coding-control-harness/src/tems-merge-authority.mjs';
+const TEMS_HOST_PARITY_TEST = '/Users/jasongraham/.openclaw/repos/coding-control-harness/test/live-portfolio-merge-runner.host.test.mjs';
 function arg(name) { const index = process.argv.indexOf(name); if (index === -1 || !process.argv[index + 1]) throw new Error(`${name} is required`); return process.argv[index + 1]; }
 function run(argv) { return execFileSync('gh', argv, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
 function canonical(value) { return `${JSON.stringify(value, null, 2)}\n`; }
@@ -64,6 +65,10 @@ function main() {
   const failed = (current.statusCheckRollup ?? []).filter((check) => check.status !== 'COMPLETED' || check.conclusion !== 'SUCCESS');
   if (failed.length) throw new Error(`PR has non-success checks: ${failed.map((check) => check.name ?? check.context).join(',')}`);
   const hostStatusAt = repository === 'jgraham310/tems' ? currentTemsHostStatus(repository, head) : null;
+  if (repository === 'jgraham310/tems') {
+    // A previously published status cannot attest to the currently installed files.
+    execFileSync('node', [TEMS_HOST_PARITY_TEST], { stdio: ['ignore', 'pipe', 'pipe'] });
+  }
   const unresolvedThreads = activeReviewThreads(repository, pr);
   if (unresolvedThreads) throw new Error(`PR has ${unresolvedThreads} unresolved active review thread(s)`);
   // Persist the full authorization/review decision before executing the

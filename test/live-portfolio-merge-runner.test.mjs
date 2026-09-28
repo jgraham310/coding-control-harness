@@ -11,7 +11,9 @@ assert.ok(existsSync(runnerSource), `runner source is required: ${runnerSource}`
 const source = readFileSync(runnerSource, 'utf8');
 const candidateGate = resolve('src/tems-merge-authority.mjs');
 const gateDeclaration = /^const TEMS_AUTHORITY_GATE = .*;$/m;
+const parityDeclaration = /^const TEMS_HOST_PARITY_TEST = .*;$/m;
 assert.match(source, gateDeclaration, 'runner must declare a TEMS authority gate');
+assert.match(source, parityDeclaration, 'runner must declare a live TEMS host parity test');
 assert.match(source, /\[TEMS_AUTHORITY_GATE, repository, pr, head, protocol\]/,
   'runner must pass exact PR, head, and protocol receipt to TEMS gate');
 
@@ -21,13 +23,16 @@ const fixture = mkdtempSync(join(tmpdir(), 'tems-live-runner-'));
 try {
   const runner = join(fixture, 'bin/pr-merge-runner.mjs');
   const shim = join(fixture, 'bin/authority-gate.mjs');
+  const parity = join(fixture, 'bin/host-parity.mjs');
+  const parityMarker = join(fixture, 'parity-ran');
   const sourceCharter = join(fixture, 'source-charter.json');
   const deployedCharter = join(fixture, 'deployed-charter.json');
   const receipt = join(fixture, `evidence/pr-merge/jgraham310__tems/pr-${pr}/${head}.json`);
   mkdirSync(dirname(runner), { recursive: true });
   mkdirSync(join(fixture, 'policy'), { recursive: true });
   writeFileSync(join(fixture, 'package.json'), '{"type":"module"}');
-  writeFileSync(runner, source.replace(gateDeclaration, `const TEMS_AUTHORITY_GATE = ${JSON.stringify(shim)};`));
+  writeFileSync(runner, source.replace(gateDeclaration, `const TEMS_AUTHORITY_GATE = ${JSON.stringify(shim)};`)
+    .replace(parityDeclaration, `const TEMS_HOST_PARITY_TEST = ${JSON.stringify(parity)};`));
   writeFileSync(shim, `import { assertCurrentTemsMergeAuthority } from ${JSON.stringify(candidateGate)};
 assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)}, ${JSON.stringify(deployedCharter)}, process.argv[3], process.argv[4], process.argv[5]);
 `);
@@ -85,6 +90,22 @@ if (process.argv[2] === 'pr') {
     assert.equal(result.status, 1, `${mode} canonical-host status must deny`);
     assert.match(result.stderr, /canonical-host integration status/);
     assert.equal(existsSync(receipt), false, `${mode} denial must not write a merge decision`);
+  }
+  writeFileSync(parity, `import { writeFileSync } from 'node:fs';
+writeFileSync(${JSON.stringify(parityMarker)}, 'ran');
+if (process.env.TEMS_TEST_PARITY === 'drift') process.exit(1);
+`);
+  for (const mode of ['drift', 'match']) {
+    const result = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
+      '--pr', String(pr), '--head', head], { encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEMS_TEST_HEAD: head,
+        TEMS_TEST_HOST_STATUS: 'success', TEMS_TEST_PARITY: mode } });
+    assert.equal(result.status, 1, `${mode} parity fixture must stop before merge`);
+    assert.equal(existsSync(parityMarker), true, 'live parity gate must run at the exact head');
+    assert.equal(existsSync(receipt), false, 'no decision receipt before live parity and review-thread clearance');
+    if (mode === 'drift') assert.match(result.stderr, /host-parity\.mjs/);
+    else assert.doesNotMatch(result.stderr, /host-parity\.mjs/);
+    rmSync(parityMarker);
   }
   console.log('live portfolio merge runner source/deployed charter denial: passed');
 } finally {

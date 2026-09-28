@@ -20,7 +20,7 @@ assert.equal(digest(liveGate), digest(candidateGate),
 const unmodified = spawnSync(process.execPath, [liveRunner, '--repo', 'jgraham310/tems',
   '--pr', '0', '--head', '0000000000000000000000000000000000000000'], { encoding: 'utf8' });
 assert.equal(unmodified.status, 1, 'unlisted synthetic PR must not merge');
-assert.match(unmodified.stderr, /TEMS autonomous merge is prohibited by bounded authority|not explicitly authorized for auto-merge/,
+assert.match(unmodified.stderr, /TEMS autonomous merge is prohibited by bounded authority|current exact-head TEMS merge protocol evidence is missing or stale|not explicitly authorized for auto-merge/,
   'unmodified runner must reach its live authority or allowlist gate');
 const result = spawnSync(process.execPath, ['test/live-portfolio-merge-runner.test.mjs'], {
   env: { ...process.env, TEMS_RUNNER_SOURCE: liveRunner }, encoding: 'utf8'
