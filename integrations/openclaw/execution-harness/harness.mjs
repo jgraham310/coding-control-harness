@@ -16,7 +16,7 @@ import { acquireStateLock } from "./state-lock.mjs";
 import { reconcileCompletionLanes } from "./completion-watch.mjs";
 import { validateLane } from "../../../src/completion-controller.mjs";
 import { loadReviewRegistration } from "../../../src/review-registration.mjs";
-import { hasCompletionGrant } from "./completion-grant.mjs";
+import { hasCompletionGrant, withCompletionGrant } from "./completion-grant.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultState = process.env.EXECUTION_HARNESS_STATE || path.join(here, "execution-state.json");
@@ -779,13 +779,7 @@ if (command === "status") {
   const timestamp = Date.parse(at);
   const findings = portfolioFindings(state, at, process.argv.includes("--apply"));
   findings.push(...reconcileCompletionLanes(state, { at, apply: process.argv.includes("--apply"), save: (updated) => save(stateFile, updated), logDir: path.join(path.dirname(stateFile), "completion-logs"),
-    authorize: (completion) => {
-      try {
-        const runtime = JSON.parse(fs.readFileSync(workStatePath(), "utf8"));
-        validateRuntime(runtime);
-        return hasCompletionGrant(runtime, completion);
-      } catch { return false; }
-    } }));
+    authorizeDispatch: (completion, perform) => withCompletionGrant(workStatePath(), completion, perform) }));
   for (const item of state.lanes.filter((candidate) => candidate.active)) {
     const unhealthyDispatch = dispatchHealth(item);
     if (unhealthyDispatch) {

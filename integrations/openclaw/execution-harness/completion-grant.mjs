@@ -1,5 +1,8 @@
 /** Exact-lane retry authority from the canonical, versioned WorkState action. */
 import crypto from "node:crypto";
+import fs from "node:fs";
+import { acquireStateLock } from "./state-lock.mjs";
+import { validateRuntime } from "./work-state.mjs";
 
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -26,4 +29,14 @@ export function hasCompletionGrant(runtime, lane, version = lane.workStateVersio
       && grant.repository === lane.repository && grant.headSha === lane.headSha
       && grant.actionDigest === digest(lane.nextAction?.argv);
   });
+}
+
+export function withCompletionGrant(file, lane, perform, { validate = validateRuntime } = {}) {
+  const release = acquireStateLock(file);
+  try {
+    const runtime = JSON.parse(fs.readFileSync(file, "utf8"));
+    validate(runtime);
+    if (!hasCompletionGrant(runtime, lane)) return false;
+    return perform();
+  } finally { release(); }
 }

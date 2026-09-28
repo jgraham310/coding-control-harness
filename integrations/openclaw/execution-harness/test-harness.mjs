@@ -47,12 +47,12 @@ liveState.completionLanes = [{
   id: "synthetic-completion-2712", issue: 2712, owner: "claude", sessionName: "missing-synthetic-session",
   worktree: temp, completionPredicate: "independent exact-head review", deadlineAt: "2026-08-16T14:00:00Z",
   state: "executing", retry: { attempts: 0, maxAttempts: 1 }, reviewRequired: true,
-  headSha: "a".repeat(40), completedEvidence: true, lastCommand: { status: "error", at: "2026-08-15T12:44:00Z" },
+  headSha: "a".repeat(40), completedEvidence: true, lastCommand: { status: "error", evidenceRef: "synthetic-failure", at: "2026-08-15T12:44:00Z" },
   nextAction: { kind: "independent_review", registrationId: "synthetic-review", reviewer: "codex", headSha: "a".repeat(40), argv: ["/bin/echo", "review"] }
 }];
 fs.writeFileSync(state, `${JSON.stringify(liveState, null, 2)}\n`);
 const liveWatch = run("watch", "--apply", "--skip-tmux", "--at", "2026-08-15T12:44:01Z");
-assert.equal(liveWatch.findings.some((finding) => finding.kind === "completion_workstate_grant_missing"), true);
+assert.equal(liveWatch.findings.some((finding) => finding.kind === "completion_independent_review_action_unregistered"), true);
 assert.equal(JSON.parse(fs.readFileSync(state, "utf8")).completionLanes[0].state, "blocked", "live watch must hold stale-completion/error conflict");
 assert.equal(run("watch", "--apply", "--skip-tmux", "--at", "2026-08-15T12:44:02Z").findings.some((finding) => finding.kind.startsWith("completion_")), false, "held lane is not redispatched");
 const migrated = run("migrate-workstates", "--at", "2026-08-15T12:45:00-04:00");

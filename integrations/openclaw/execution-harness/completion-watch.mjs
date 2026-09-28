@@ -37,30 +37,41 @@ export function observeCompletionLane(lane, {
   return { pane, lastCommand: lane.lastCommand ?? null, completedEvidence: lane.completedEvidence === true, blockedReason };
 }
 
-export function reconcileCompletionLanes(state, { at, apply, save, observe = observeCompletionLane, registrationLoader = loadReviewRegistration, authorize = () => false, dispatch = null, logDir = path.join(os.tmpdir(), "coding-control-completion-logs") } = {}) {
+export function reconcileCompletionLanes(state, { at, apply, save, observe = observeCompletionLane, registrationLoader = loadReviewRegistration, authorizeDispatch = () => false, dispatch = null, logDir = path.join(os.tmpdir(), "coding-control-completion-logs") } = {}) {
   const findings = [];
+  const finding = (lane, observation, decision) => findings.push({ issue: lane.issue ?? null, phase: lane.state,
+    kind: `completion_${decision.reason}`, evidence: completionReceipt(lane, observation, decision, { now: at }), nextAction: decision.action });
   for (let index = 0; index < (state.completionLanes ?? []).length; index++) {
     const lane = state.completionLanes[index];
     if (["blocked", "completed", "failed"].includes(lane.state)) continue;
     const observation = observe(lane);
+    if (lane.lastDispatch?.launchStatus === "pending") {
+      const uncertain = { state: "blocked", action: "hold", reason: "launch_outcome_uncertain", priority: "immediate" };
+      finding(lane, observation, uncertain);
+      if (apply) { state.completionLanes[index] = applyDecision(lane, uncertain, { now: at }); save(state); }
+      continue;
+    }
     let registration = null;
     if (lane.reviewRequired && (observation.error || observation.pane === "idle_prompt" || observation.pane === "exited" || ["error", "rejected"].includes(observation.lastCommand?.status))) {
       try { registration = registrationLoader(lane); } catch { /* fail closed */ }
     }
-    const decision = authorize(lane)
-      ? reconcileLane(lane, observation, { now: at, reviewRegistration: registration })
-      : { state: "blocked", action: "hold", reason: "workstate_grant_missing", priority: "immediate" };
+    const decision = reconcileLane(lane, observation, { now: at, reviewRegistration: registration });
     if (decision.action === "heartbeat" || decision.action === "none") continue;
-    const receipt = completionReceipt(lane, observation, decision, { now: at });
-    findings.push({ issue: lane.issue ?? null, phase: lane.state, kind: `completion_${decision.reason}`, evidence: receipt, nextAction: decision.action });
-    if (!apply) continue;
-    const next = applyDecision(lane, decision, { now: at });
-    state.completionLanes[index] = next;
-    // Persist the attempt claim while the caller's cross-process lock is held,
-    // before a command can start. A second watcher cannot claim attempt N.
-    save(state);
-    if (decision.action === "redispatch_registered_action") {
-      try {
+    if (decision.action !== "redispatch_registered_action") {
+      finding(lane, observation, decision);
+      if (apply) { state.completionLanes[index] = applyDecision(lane, decision, { now: at }); save(state); }
+      continue;
+    }
+    if (!apply) { finding(lane, observation, decision); continue; }
+    try {
+      const authorized = authorizeDispatch(lane, () => {
+        const next = applyDecision(lane, decision, { now: at });
+        next.state = "recovering";
+        next.lastDispatch.launchStatus = "pending";
+        state.completionLanes[index] = next;
+        // The execution-state lock is already held by the caller. Reserve the
+        // attempt durably while the WorkState lock is held by authorizeDispatch.
+        save(state);
         const launch = dispatch ?? ((candidate, argv) => {
           fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
           const safeId = candidate.id.replace(/[^A-Za-z0-9_.-]/g, "_");
@@ -77,13 +88,23 @@ export function reconcileCompletionLanes(state, { at, apply, save, observe = obs
           } finally { fs.closeSync(fd); }
         });
         const launched = launch(next, decision.argv);
-        next.lastDispatch = { ...next.lastDispatch, ...launched };
+        next.state = "executing";
+        next.lastDispatch = { ...next.lastDispatch, ...launched, launchStatus: "launched" };
         save(state);
-      } catch (error) {
-        next.state = "blocked";
-        next.blockedReason = `dispatch_failed:${String(error.message ?? error)}`;
+        return true;
+      });
+      if (!authorized) {
+        const denied = { state: "blocked", action: "hold", reason: "workstate_grant_missing", priority: "immediate" };
+        finding(lane, observation, denied);
+        state.completionLanes[index] = applyDecision(lane, denied, { now: at });
         save(state);
-      }
+      } else finding(lane, observation, decision);
+    } catch (error) {
+      const uncertain = { state: "blocked", action: "hold", reason: "launch_outcome_uncertain", priority: "immediate" };
+      finding(lane, observation, uncertain);
+      state.completionLanes[index] = applyDecision(state.completionLanes[index], uncertain, { now: at });
+      state.completionLanes[index].launchError = String(error.message ?? error).slice(0, 300);
+      save(state);
     }
   }
   return findings;
