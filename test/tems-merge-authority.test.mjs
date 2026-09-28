@@ -25,6 +25,21 @@ try {
   writeFileSync(charter, JSON.stringify(allowed));
   assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed), /prohibited/);
   writeFileSync(deployed, JSON.stringify(allowed));
-  assert.doesNotThrow(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed));
+  const head = '1234567890abcdef1234567890abcdef12345678';
+  const proof = join(dir, 'protocol.json');
+  const now = Date.now();
+  const valid = { kind: 'kernel_pr_verification', status: 'passed', repository: 'jgraham310/tems',
+    pr: 654, head_sha: head, artifact: `git:${head}`, observer: 'coding-kernel',
+    observedAt: new Date(now - 1000).toISOString(), expiresAt: new Date(now + 60000).toISOString() };
+  assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head), /protocol evidence/);
+  for (const invalid of [{ ...valid, head_sha: '0'.repeat(40) },
+    { ...valid, pr: 655 }, { ...valid, status: 'pending' },
+    { ...valid, expiresAt: new Date(now - 1000).toISOString() },
+    { ...valid, observedAt: new Date(now + 60000).toISOString() }]) {
+    writeFileSync(proof, JSON.stringify(invalid));
+    assert.throws(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof), /protocol evidence/);
+  }
+  writeFileSync(proof, JSON.stringify(valid));
+  assert.doesNotThrow(() => assertCurrentTemsMergeAuthority('jgraham310/tems', charter, deployed, 654, head, proof));
 } finally { rmSync(dir, { recursive: true, force: true }); }
 console.log('TEMS bounded merge authority tests: passed');

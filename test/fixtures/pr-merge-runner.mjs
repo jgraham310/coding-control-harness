@@ -38,7 +38,10 @@ function cleanReviewFor(repository, pr, head) {
 }
 function main() {
   const repository = arg('--repo'); const pr = arg('--pr'); const head = arg('--head');
-  if (repository === 'jgraham310/tems') execFileSync('node', [TEMS_AUTHORITY_GATE, repository], { stdio: ['ignore', 'pipe', 'pipe'] });
+  if (repository === 'jgraham310/tems') {
+    const protocol = join(ROOT, 'evidence', 'merge-protocol', repository.replace('/', '__'), `pr-${pr}`, `${head}.json`);
+    execFileSync('node', [TEMS_AUTHORITY_GATE, repository, pr, head, protocol], { stdio: ['ignore', 'pipe', 'pipe'] });
+  }
   const evidence = join(ROOT, 'evidence', 'pr-merge', repository.replace('/', '__'), `pr-${pr}`, `${head}.json`);
   const authorization = authorizationFor(repository, pr, head);
   const review = cleanReviewFor(repository, pr, head);

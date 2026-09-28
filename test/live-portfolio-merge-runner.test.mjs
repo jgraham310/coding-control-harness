@@ -12,8 +12,8 @@ const source = readFileSync(runnerSource, 'utf8');
 const candidateGate = resolve('src/tems-merge-authority.mjs');
 const gateDeclaration = /^const TEMS_AUTHORITY_GATE = .*;$/m;
 assert.match(source, gateDeclaration, 'runner must declare a TEMS authority gate');
-assert.match(source, /if \(repository === 'jgraham310\/tems'\) execFileSync\('node', \[TEMS_AUTHORITY_GATE, repository\]/,
-  'runner must invoke the TEMS gate');
+assert.match(source, /\[TEMS_AUTHORITY_GATE, repository, pr, head, protocol\]/,
+  'runner must pass exact PR, head, and protocol receipt to TEMS gate');
 
 const head = '1234567890abcdef1234567890abcdef12345678';
 const pr = 654;
@@ -29,7 +29,7 @@ try {
   writeFileSync(join(fixture, 'package.json'), '{"type":"module"}');
   writeFileSync(runner, source.replace(gateDeclaration, `const TEMS_AUTHORITY_GATE = ${JSON.stringify(shim)};`));
   writeFileSync(shim, `import { assertCurrentTemsMergeAuthority } from ${JSON.stringify(candidateGate)};
-assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)}, ${JSON.stringify(deployedCharter)});
+assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)}, ${JSON.stringify(deployedCharter)}, process.argv[3], process.argv[4], process.argv[5]);
 `);
   writeFileSync(join(fixture, 'policy/auto-merge-allowlist.json'), JSON.stringify({
     schema_version: 1,
@@ -51,6 +51,12 @@ assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)
     assert.doesNotMatch(result.stderr, /not explicitly authorized for auto-merge/);
     assert.equal(existsSync(receipt), false, 'denied merge must not write a decision receipt');
   }
+  writeFileSync(sourceCharter, JSON.stringify(allowed));
+  writeFileSync(deployedCharter, JSON.stringify(allowed));
+  const denied = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
+    '--pr', String(pr), '--head', head], { encoding: 'utf8' });
+  assert.equal(denied.status, 1, 'missing exact-head protocol proof must deny');
+  assert.equal(existsSync(receipt), false, 'protocol denial must not write merge decision');
   console.log('live portfolio merge runner source/deployed charter denial: passed');
 } finally {
   rmSync(fixture, { recursive: true, force: true });
