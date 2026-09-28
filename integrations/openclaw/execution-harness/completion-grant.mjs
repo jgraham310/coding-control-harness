@@ -50,19 +50,20 @@ export function hasCompletionGrant(runtime, lane, version = lane.workStateVersio
   return !!matchingCompletionGrant(runtime, lane, version);
 }
 
-export function withCompletionGrant(file, lane, perform, { validate = validateRuntime, verifyWorktree = verifyExactWorktree } = {}) {
+export function withCompletionGrant(file, lane, reserve, launch, { validate = validateRuntime, verifyWorktree = verifyExactWorktree } = {}) {
   const release = acquireStateLock(file);
   try {
     const runtime = JSON.parse(fs.readFileSync(file, "utf8"));
     validate(runtime);
     const action = matchingCompletionGrant(runtime, lane);
     if (!action || !verifyWorktree(lane)) return false;
+    reserve();
     action.dispatchClaim = { id: crypto.randomUUID(), laneId: lane.id, headSha: lane.headSha,
       claimedAt: new Date().toISOString(), status: "pending" };
     const temporary = `${file}.${process.pid}.completion-claim.tmp`;
     fs.writeFileSync(temporary, `${JSON.stringify(runtime, null, 2)}\n`, { mode: 0o600 });
     fs.renameSync(temporary, file);
-    const result = perform();
+    const result = launch();
     action.dispatchClaim.status = "launched";
     fs.writeFileSync(temporary, `${JSON.stringify(runtime, null, 2)}\n`, { mode: 0o600 });
     fs.renameSync(temporary, file);

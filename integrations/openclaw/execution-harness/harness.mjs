@@ -777,7 +777,7 @@ if (command === "status") {
   const timestamp = Date.parse(at);
   const findings = portfolioFindings(state, at, process.argv.includes("--apply"));
   findings.push(...reconcileCompletionLanes(state, { at, apply: process.argv.includes("--apply"), save: (updated) => save(stateFile, updated), logDir: path.join(path.dirname(stateFile), "completion-logs"),
-    authorizeDispatch: (completion, perform) => withCompletionGrant(workStatePath(), completion, perform) }));
+    authorizeDispatch: (completion, reserve, launch) => withCompletionGrant(workStatePath(), completion, reserve, launch) }));
   for (const item of state.lanes.filter((candidate) => candidate.active)) {
     const unhealthyDispatch = dispatchHealth(item);
     if (unhealthyDispatch) {

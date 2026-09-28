@@ -64,14 +64,16 @@ export function reconcileCompletionLanes(state, { at, apply, save, observe = obs
     }
     if (!apply) { finding(lane, observation, decision); continue; }
     try {
+      let next;
       const authorized = authorizeDispatch(lane, () => {
-        const next = applyDecision(lane, decision, { now: at });
+        next = applyDecision(lane, decision, { now: at });
         next.state = "recovering";
         next.lastDispatch.launchStatus = "pending";
         state.completionLanes[index] = next;
         // The execution-state lock is already held by the caller. Reserve the
         // attempt durably while the WorkState lock is held by authorizeDispatch.
         save(state);
+      }, () => {
         const launch = dispatch ?? ((candidate, argv) => {
           fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
           const safeId = candidate.id.replace(/[^A-Za-z0-9_.-]/g, "_");

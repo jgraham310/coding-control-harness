@@ -12,7 +12,7 @@ const observation = { pane: "idle_prompt", lastCommand: { status: "rejected", ev
 const state = { completionLanes: [structuredClone(lane)] };
 const saved = [];
 let dispatches = 0;
-const options = { at, apply: true, observe: () => observation, authorizeDispatch: (_lane, perform) => perform(),
+const options = { at, apply: true, observe: () => observation, authorizeDispatch: (_lane, reserve, launch) => { reserve(); return launch(); },
   save: (value) => saved.push(structuredClone(value.completionLanes[0])),
   dispatch: () => { dispatches++; return { pid: 123 }; } };
 const first = reconcileCompletionLanes(state, options);

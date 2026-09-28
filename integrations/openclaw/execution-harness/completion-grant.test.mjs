@@ -28,19 +28,34 @@ assert.equal(hasCompletionGrant({ ...runtime, actions: { action: { ...runtime.ac
 const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "completion-grant-lock-")), "work-state.json");
 fs.writeFileSync(file, JSON.stringify(runtime));
 let launched = 0;
+const reservationFile = path.join(path.dirname(file), "lane-reservation.json");
+assert.throws(() => withCompletionGrant(file, lane, () => {
+  fs.writeFileSync(reservationFile, JSON.stringify({ launchStatus: "pending" }));
+  throw new Error("crash after lane reservation");
+}, () => { launched++; }, { validate: () => true, verifyWorktree: () => true }), /crash after lane reservation/);
+assert.equal(JSON.parse(fs.readFileSync(reservationFile, "utf8")).launchStatus, "pending");
+assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).actions.action.dispatchClaim, undefined, "failed reservation does not consume global grant");
+assert.equal(launched, 0);
+let reserved = false;
 assert.equal(withCompletionGrant(file, lane, () => {
-  assert.equal(fs.existsSync(`${file}.lockdir`), true, "grant must remain locked through launch");
+  assert.equal(fs.existsSync(`${file}.lockdir`), true, "grant remains locked while reserving lane");
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).actions.action.dispatchClaim, undefined, "lane reservation precedes global claim");
+  reserved = true;
+}, () => {
+  assert.equal(reserved, true);
   assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).actions.action.dispatchClaim.status, "pending", "global claim persists before launch");
   launched++;
   return true;
 }, { validate: () => true, verifyWorktree: () => true }), true);
 assert.equal(launched, 1);
 assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).actions.action.dispatchClaim.status, "launched");
-assert.equal(withCompletionGrant(file, lane, () => { launched++; }, { validate: () => true, verifyWorktree: () => true }), false, "a second execution-state file cannot reuse the same WorkState action");
+assert.equal(withCompletionGrant(file, lane, () => { reserved = false; }, () => { launched++; }, { validate: () => true, verifyWorktree: () => true }), false, "a second execution-state file cannot reuse the same WorkState action");
+assert.equal(reserved, true);
 assert.equal(launched, 1);
 assert.equal(fs.existsSync(`${file}.lockdir`), false);
 fs.writeFileSync(file, JSON.stringify({ ...runtime, records: { "cto:civicline": { ...runtime.records["cto:civicline"], phase: "blocked" } } }));
-assert.equal(withCompletionGrant(file, lane, () => { launched++; }, { validate: () => true, verifyWorktree: () => true }), false);
+assert.equal(withCompletionGrant(file, lane, () => { reserved = false; }, () => { launched++; }, { validate: () => true, verifyWorktree: () => true }), false);
+assert.equal(reserved, true);
 assert.equal(launched, 1, "revoked grant cannot launch");
 const checkout = fs.mkdtempSync(path.join(os.tmpdir(), "completion-head-"));
 execFileSync("git", ["init", "-q", checkout]);
@@ -63,6 +78,6 @@ fullRuntime.actions.grant = { id: "grant", workStateId: "cto:civicline", stateVe
 assert.equal(validateRuntime(fullRuntime), true);
 const fullFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "completion-full-runtime-")), "work-state.json");
 fs.writeFileSync(fullFile, JSON.stringify(fullRuntime));
-assert.equal(withCompletionGrant(fullFile, actualLane, () => true), true, "real runtime and clean checkout authorize one launch");
-assert.equal(withCompletionGrant(fullFile, actualLane, () => true), false, "durable claim blocks second state file");
+assert.equal(withCompletionGrant(fullFile, actualLane, () => true, () => true), true, "real runtime and clean checkout authorize one launch");
+assert.equal(withCompletionGrant(fullFile, actualLane, () => true, () => true), false, "durable claim blocks second state file");
 console.log("completion WorkState grant tests: passed");
