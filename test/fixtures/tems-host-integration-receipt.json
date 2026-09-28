@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "gate": "candidate-runner-contract-only",
-  "observedAt": "2026-09-28T02:53:24.895Z",
+  "observedAt": "2026-09-28T02:54:59.391Z",
   "hashes": {
     "package.json": "4d67718e72510b28becad95a452240b1c769a9655cffb5f3c2fe3158257f2a58",
     "src/coding-kernel.mjs": "41318f0e569e95c7ebced733c3d2561ca8cfe86f2e7fdc4544b92b5049489e87",
@@ -9,7 +9,7 @@
     "test/coding-kernel.test.mjs": "1c1c3da2dea1037728999082494c34f60e82de5c97aa78f4f6e0c4a4006d8d5b",
     "test/tems-merge-authority.test.mjs": "429ab240c6390ab8d353de5987a140c1c9dfa2134f503740ec87c0d96bd77896",
     "test/live-portfolio-merge-runner.test.mjs": "54779d70cce49a3d797726c778f9e3017fd4f1f6c01e4e076f92b4d4b53a0144",
-    "test/live-portfolio-merge-runner.host.test.mjs": "fb6c6cc0beda147ec670e9c67308127c72d17f60e25ae84526dc6950094d45ac",
+    "test/live-portfolio-merge-runner.host.test.mjs": "09b88be190c2f9c43dbf1efefa5bfb1f12970aec5cd0624e60f3687f030dc6e6",
     "test/fixtures/pr-merge-runner.mjs": "3ced3d180df4a1eadccbe26dc8f5ea0b3fc8ad11d8669bcac786bf1c99a966f9",
     "scripts/publish-tems-host-status.py": "6515bf549f5042b724efdba0039aa38d446c9321ece71fb4f840bfa1b38c34a4"
   }

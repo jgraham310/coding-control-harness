@@ -12,9 +12,9 @@ const candidateGate = resolve('src/tems-merge-authority.mjs');
 assert.ok(existsSync(liveRunner), `canonical host runner is required: ${liveRunner}`);
 assert.ok(existsSync(pinnedRunner), 'pinned runner fixture is required');
 assert.ok(existsSync(liveGate), `installed TEMS authority gate is required: ${liveGate}`);
-assert.equal(readFileSync(liveRunner, 'utf8'), readFileSync(pinnedRunner, 'utf8'),
-  'canonical host runner drifted from the pinned contract');
 const digest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
+assert.equal(digest(liveRunner), digest(pinnedRunner),
+  'canonical host runner drifted from the pinned contract');
 assert.equal(digest(liveGate), digest(candidateGate),
   'installed TEMS authority gate has not integrated the exact candidate');
 const unmodified = spawnSync(process.execPath, [liveRunner, '--repo', 'jgraham310/tems',
