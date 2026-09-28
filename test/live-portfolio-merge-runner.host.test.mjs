@@ -10,14 +10,19 @@ const liveRunner = resolve(homedir(), '.openclaw/workspace-cos/portfolio-control
 const pinnedRunner = fileURLToPath(new URL('./fixtures/pr-merge-runner.mjs', import.meta.url));
 const liveGate = resolve(homedir(), '.openclaw/repos/coding-control-harness/src/tems-merge-authority.mjs');
 const candidateGate = fileURLToPath(new URL('../src/tems-merge-authority.mjs', import.meta.url));
+const liveCiviclineGate = resolve(homedir(), '.openclaw/repos/coding-control-harness/src/civicline-merge-authority.mjs');
+const candidateCiviclineGate = fileURLToPath(new URL('../src/civicline-merge-authority.mjs', import.meta.url));
 assert.ok(existsSync(liveRunner), `canonical host runner is required: ${liveRunner}`);
 assert.ok(existsSync(pinnedRunner), 'pinned runner fixture is required');
 assert.ok(existsSync(liveGate), `installed TEMS authority gate is required: ${liveGate}`);
+assert.ok(existsSync(liveCiviclineGate), `installed CivicLine authority gate is required: ${liveCiviclineGate}`);
 const digest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
 assert.equal(digest(liveRunner), digest(pinnedRunner),
   'canonical host runner drifted from the pinned contract');
 assert.equal(digest(liveGate), digest(candidateGate),
   'installed TEMS authority gate has not integrated the exact candidate');
+assert.equal(digest(liveCiviclineGate), digest(candidateCiviclineGate),
+  'installed CivicLine authority gate has not integrated the exact candidate');
 const unmodified = spawnSync(process.execPath, [liveRunner, '--repo', 'jgraham310/tems',
   '--pr', '0', '--head', '0000000000000000000000000000000000000000'], { encoding: 'utf8' });
 assert.equal(unmodified.status, 1, 'unlisted synthetic PR must not merge');

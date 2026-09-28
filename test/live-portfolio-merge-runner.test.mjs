@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -13,6 +14,13 @@ const source = readFileSync(runnerSource, 'utf8');
 const candidateGate = fileURLToPath(new URL('../src/tems-merge-authority.mjs', import.meta.url));
 const gateDeclaration = /^const TEMS_AUTHORITY_GATE = .*;$/m;
 const parityDeclaration = /^const TEMS_HOST_PARITY_TEST = .*;$/m;
+const civiclineGateDeclaration = /^const CIVICLINE_AUTHORITY_GATE = .*;$/m;
+const civiclineDigestDeclaration = /^const CIVICLINE_GATE_SHA256 = '([a-f0-9]{64})';$/m;
+const civiclineCandidate = fileURLToPath(new URL('../src/civicline-merge-authority.mjs', import.meta.url));
+assert.equal(source.match(civiclineDigestDeclaration)?.[1], createHash('sha256').update(readFileSync(civiclineCandidate)).digest('hex'),
+  'runner must pin the exact candidate CivicLine authority gate');
+assert.match(source, /\[CIVICLINE_AUTHORITY_GATE, 'merge', pr, civiclineProof\]/,
+  'runner must delegate final CivicLine mutation to the WorkState-locked gate');
 assert.match(source, gateDeclaration, 'runner must declare a TEMS authority gate');
 assert.match(source, parityDeclaration, 'runner must declare a live TEMS host parity test');
 assert.match(source, /\[TEMS_AUTHORITY_GATE, repository, pr, head, protocol\]/,
@@ -34,6 +42,14 @@ try {
   writeFileSync(join(fixture, 'package.json'), '{"type":"module"}');
   writeFileSync(runner, source.replace(gateDeclaration, `const TEMS_AUTHORITY_GATE = ${JSON.stringify(shim)};`)
     .replace(parityDeclaration, `const TEMS_HOST_PARITY_TEST = ${JSON.stringify(parity)};`));
+  const civiclineRunner = join(fixture, 'bin/civicline-runner.mjs');
+  writeFileSync(civiclineRunner, source.replace(civiclineGateDeclaration, `const CIVICLINE_AUTHORITY_GATE = ${JSON.stringify(shim)};`));
+  writeFileSync(shim, '');
+  const staleGate = spawnSync(process.execPath, [civiclineRunner, '--repo', 'jgraham310/local-government',
+    '--pr', String(pr), '--head', head], { cwd: fixture, encoding: 'utf8' });
+  assert.equal(staleGate.status, 1, 'stale installed CivicLine gate must deny before proof or merge');
+  assert.match(staleGate.stderr, /installed CivicLine authority gate does not match reviewed candidate/);
+  assert.equal(existsSync(join(fixture, `evidence/pr-merge/jgraham310__local-government/pr-${pr}/${head}.json`)), false);
   writeFileSync(shim, `import { assertCurrentTemsMergeAuthority } from ${JSON.stringify(candidateGate)};
 assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)}, ${JSON.stringify(deployedCharter)}, process.argv[3], process.argv[4], process.argv[5]);
 `);
