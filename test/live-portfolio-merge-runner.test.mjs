@@ -3,13 +3,14 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const pinnedRunner = resolve('test/fixtures/pr-merge-runner.mjs');
+const pinnedRunner = fileURLToPath(new URL('./fixtures/pr-merge-runner.mjs', import.meta.url));
 assert.ok(existsSync(pinnedRunner), 'portfolio merge runner fixture is required');
 const runnerSource = process.env.TEMS_RUNNER_SOURCE ? resolve(process.env.TEMS_RUNNER_SOURCE) : pinnedRunner;
 assert.ok(existsSync(runnerSource), `runner source is required: ${runnerSource}`);
 const source = readFileSync(runnerSource, 'utf8');
-const candidateGate = resolve('src/tems-merge-authority.mjs');
+const candidateGate = fileURLToPath(new URL('../src/tems-merge-authority.mjs', import.meta.url));
 const gateDeclaration = /^const TEMS_AUTHORITY_GATE = .*;$/m;
 const parityDeclaration = /^const TEMS_HOST_PARITY_TEST = .*;$/m;
 assert.match(source, gateDeclaration, 'runner must declare a TEMS authority gate');
@@ -50,7 +51,7 @@ assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)
     writeFileSync(sourceCharter, JSON.stringify(revokedPath === sourceCharter ? revoked : allowed));
     writeFileSync(deployedCharter, JSON.stringify(revokedPath === deployedCharter ? revoked : allowed));
     const result = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
-      '--pr', String(pr), '--head', head], { encoding: 'utf8' });
+      '--pr', String(pr), '--head', head], { cwd: fixture, encoding: 'utf8' });
     assert.equal(result.status, 1, `revoked ${revokedPath} must deny`);
     assert.match(result.stderr, /TEMS autonomous merge is prohibited by bounded authority/);
     assert.doesNotMatch(result.stderr, /not explicitly authorized for auto-merge/);
@@ -59,7 +60,7 @@ assertCurrentTemsMergeAuthority(process.argv[2], ${JSON.stringify(sourceCharter)
   writeFileSync(sourceCharter, JSON.stringify(allowed));
   writeFileSync(deployedCharter, JSON.stringify(allowed));
   const denied = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
-    '--pr', String(pr), '--head', head], { encoding: 'utf8' });
+    '--pr', String(pr), '--head', head], { cwd: fixture, encoding: 'utf8' });
   assert.equal(denied.status, 1, 'missing exact-head protocol proof must deny');
   assert.equal(existsSync(receipt), false, 'protocol denial must not write merge decision');
   // Isolate the subsequent host-status gate after the authority gate has been tested above.
@@ -85,7 +86,7 @@ if (process.argv[2] === 'pr') {
 `, { mode: 0o755 });
   for (const mode of ['absent', 'failure', 'stale', 'wrong-head']) {
     const result = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
-      '--pr', String(pr), '--head', head], { encoding: 'utf8',
+      '--pr', String(pr), '--head', head], { cwd: fixture, encoding: 'utf8',
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEMS_TEST_HEAD: head, TEMS_TEST_HOST_STATUS: mode } });
     assert.equal(result.status, 1, `${mode} canonical-host status must deny`);
     assert.match(result.stderr, /canonical-host integration status/);
@@ -97,7 +98,7 @@ if (process.env.TEMS_TEST_PARITY === 'drift') process.exit(1);
 `);
   for (const mode of ['drift', 'match']) {
     const result = spawnSync(process.execPath, [runner, '--repo', 'jgraham310/tems',
-      '--pr', String(pr), '--head', head], { encoding: 'utf8',
+      '--pr', String(pr), '--head', head], { cwd: fixture, encoding: 'utf8',
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TEMS_TEST_HEAD: head,
         TEMS_TEST_HOST_STATUS: 'success', TEMS_TEST_PARITY: mode } });
     assert.equal(result.status, 1, `${mode} parity fixture must stop before merge`);
