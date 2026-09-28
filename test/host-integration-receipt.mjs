@@ -9,7 +9,8 @@ const inputs = [
   'test/tems-merge-authority.test.mjs',
   'test/live-portfolio-merge-runner.test.mjs',
   'test/live-portfolio-merge-runner.host.test.mjs',
-  'test/fixtures/pr-merge-runner.mjs'
+  'test/fixtures/pr-merge-runner.mjs',
+  'scripts/publish-tems-host-status.py'
 ];
 const digest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
 const hashes = () => Object.fromEntries(inputs.map((path) => [path, digest(path)]));

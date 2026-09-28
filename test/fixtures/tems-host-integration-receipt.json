@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
   "gate": "canonical-host-runner-presence-parity-revocation",
-  "observedAt": "2026-09-28T02:31:48.913Z",
+  "observedAt": "2026-09-28T02:35:25.956Z",
   "hashes": {
     "src/tems-merge-authority.mjs": "dfc01acce01bd046ebf4766aa41ddb3284008f8cb7d7b3b2ed5ceece0c336e7c",
     "test/tems-merge-authority.test.mjs": "c4e1c87e2e00ccfba12c33da6b80e87c06fbc97e8f7b692a2c39eec677394f51",
     "test/live-portfolio-merge-runner.test.mjs": "63f7c4629d9b2b4cb3f7cf69518c3583cdd16599e465b2cd3579d7dc18a98893",
     "test/live-portfolio-merge-runner.host.test.mjs": "9183b3c904186857a875f2f5c26dab9c9d73436f056a53e6263039ab20c01702",
-    "test/fixtures/pr-merge-runner.mjs": "812e2e6fc5b0e02c1ce1d7c8ffbf81420172cb42dc66fb7ac6b6c196b06e57fa"
+    "test/fixtures/pr-merge-runner.mjs": "812e2e6fc5b0e02c1ce1d7c8ffbf81420172cb42dc66fb7ac6b6c196b06e57fa",
+    "scripts/publish-tems-host-status.py": "f0f857ef3e2cc3cbcb9370d970977bc929b085c5a77898eec9813c325e5f31ac"
   }
 }
