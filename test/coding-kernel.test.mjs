@@ -14,6 +14,7 @@ import {
   initializeKernelRuntime,
   readKernelState,
   validateAcceptanceContract,
+  verifyTemsRemoteChecks,
   writeKernelState,
 } from '../src/coding-kernel.mjs';
 
@@ -308,6 +309,58 @@ const ACCEPTANCE_BODY = `## Engineering Acceptance Contract
   assert.ok(evidence.length >= 1);
   assert.equal(evidence[evidence.length - 1].kind, 'kernel-operation');
   fs.rmSync(runtimeRoot, { recursive: true, force: true });
+}
+
+// 10) TEMS verification cannot be asserted by an authorized caller without remote CI.
+{
+  const head = '1234567890abcdef1234567890abcdef12345678';
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'tems-kernel-gh-'));
+  const gh = path.join(bin, 'gh');
+  fs.writeFileSync(gh, `#!/usr/bin/env node
+const path = process.argv[3];
+const head = process.env.TEMS_TEST_HEAD;
+let value;
+if (path.includes('/pulls/')) value = { state: 'open', head: { sha: head } };
+else if (path.includes('/check-runs')) {
+  const runs = process.env.TEMS_TEST_CHECKS === 'green' ? [{ head_sha: head, status: 'completed', conclusion: 'success' }] : [];
+  value = { total_count: runs.length, check_runs: runs };
+} else value = { sha: head, statuses: [{ context: 'tems/canonical-host-integration', state: 'success', created_at: process.env.TEMS_TEST_STATUS_AT }] };
+process.stdout.write(JSON.stringify(value));
+`, { mode: 0o755 });
+  const previous = { PATH: process.env.PATH, TEMS_TEST_HEAD: process.env.TEMS_TEST_HEAD,
+    TEMS_TEST_CHECKS: process.env.TEMS_TEST_CHECKS, TEMS_TEST_STATUS_AT: process.env.TEMS_TEST_STATUS_AT };
+  process.env.PATH = `${bin}:${process.env.PATH}`;
+  process.env.TEMS_TEST_HEAD = head;
+  process.env.TEMS_TEST_STATUS_AT = new Date(BASE_NOW).toISOString();
+  try {
+    const { runtimeRoot, request } = makeKernel([
+      { id: 'builder', surfaces: [SURFACE_PR_LIFECYCLE], repositories: ['jgraham310/tems'] },
+    ]);
+    request({ operation: 'pr-observe', actor: 'builder', repository: 'jgraham310/tems',
+      payload: { event: 'opened', workItemId: 'issue-567', pr: 654, head } });
+    request({ operation: 'pr-observe', actor: 'builder', repository: 'jgraham310/tems',
+      payload: { event: 'ready_for_review', workItemId: 'issue-567', pr: 654 } });
+    process.env.TEMS_TEST_CHECKS = 'none';
+    const falseClaim = request({ operation: 'pr-observe', actor: 'builder', repository: 'jgraham310/tems',
+      payload: { event: 'checks_passed', workItemId: 'issue-567', pr: 654, head } });
+    assert.equal(falseClaim.ok, false, 'caller-only checks_passed must fail');
+    assert.notEqual(readKernelState(runtimeRoot).prItems[0].status, 'verified');
+    process.env.TEMS_TEST_CHECKS = 'green';
+    const verified = request({ operation: 'pr-observe', actor: 'builder', repository: 'jgraham310/tems',
+      payload: { event: 'checks_passed', workItemId: 'issue-567', pr: 654, head } });
+    assert.equal(verified.ok, true);
+    assert.equal(verified.remoteVerification.source, 'github-api');
+    assert.equal(verified.remoteVerification.head_sha, head);
+    fs.rmSync(runtimeRoot, { recursive: true, force: true });
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    fs.rmSync(bin, { recursive: true, force: true });
+  }
+  const fetch = (pathname) => pathname.includes('/pulls/') ? { state: 'open', head: { sha: head } } :
+    pathname.includes('/check-runs') ? { total_count: 0, check_runs: [] } : { sha: head, statuses: [] };
+  assert.throws(() => verifyTemsRemoteChecks('jgraham310/tems', 654, head, new Date().toISOString(), fetch), /independent/);
 }
 
 console.log('coding-kernel tests: passed');

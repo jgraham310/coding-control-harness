@@ -339,11 +339,11 @@ function dispatchHealth(item) {
 // already supervises those.
 function idleTmuxSessions(state, timestamp, idleHours) {
   let listing;
-  try { listing = execFileSync("tmux", ["list-sessions", "-F", "#{session_name}\t#{session_activity}"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }); }
+  try { listing = execFileSync("tmux", ["list-sessions", "-F", "#{session_name}|#{session_activity}"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }); }
   catch { return []; } // No tmux server: nothing to reap.
   const owned = new Set(state.lanes.filter((item) => item.active).flatMap((item) => [item.dispatch?.session, item.tmuxSession]).filter(Boolean));
   return listing.split("\n").filter(Boolean)
-    .map((line) => { const [name, activity] = line.split("\t"); return { name, idleHours: (timestamp - Number(activity) * 1000) / 3_600_000 }; })
+    .map((line) => { const [name, activity] = line.split("|"); return { name, idleHours: (timestamp - Number(activity) * 1000) / 3_600_000 }; })
     .filter((session) => !owned.has(session.name) && session.idleHours >= idleHours);
 }
 function print(value) { process.stdout.write(`${JSON.stringify(value, null, 2)}\n`); }
