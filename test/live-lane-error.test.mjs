@@ -183,6 +183,24 @@ try {
 
   write({ ...fixture, lanes: [{ ...lane, blocker: 'approval required' }] });
   assert.equal(run('2026-09-28T19:12:00Z').findings.some((entry) => entry.kind === 'development_lane_error'), false);
+  stored = JSON.parse(fs.readFileSync(stateFile));
+  assert.equal(stored.lanes[0].dispatch.paneBaseline, undefined, 'a blocked pane error cannot advance the baseline');
+  stored.lanes[0].blocker = null; // synthetic explicit unblock; unchanged bytes must still be observed
+  write(stored);
+  assert.equal(run('2026-09-28T19:12:11Z').findings.some((entry) => entry.kind === 'development_lane_error'), true, 'error present during a prior blocker is retained');
+
+  const blockedStream = path.join(root, 'blocked-stream');
+  fs.writeFileSync(blockedStream, 'hook_module_not_found\n');
+  fs.writeFileSync(`${pipeMarker}.fake:0.0`, '');
+  write({ ...fixture, lanes: [{ ...lane, blocker: 'approval required', dispatch: { ...lane.dispatch,
+    paneStream: { pane: 'fake:0.0', path: blockedStream, offset: 0, width: 80 } } }] });
+  assert.equal(run('2026-09-28T19:12:12Z').findings.some((entry) => entry.kind === 'development_lane_error'), false);
+  stored = JSON.parse(fs.readFileSync(stateFile));
+  assert.equal(stored.lanes[0].dispatch.paneStream.offset, 0, 'a blocked stream error cannot advance its offset');
+  stored.lanes[0].blocker = null; // synthetic explicit unblock
+  write(stored);
+  assert.equal(run('2026-09-28T19:12:13Z').findings.some((entry) => entry.kind === 'development_lane_error'), true, 'retained stream marker holds after unblock');
+
   fs.writeFileSync(paneFile, 'Execution continuing normally\n');
   write(fixture);
   assert.equal(run('2026-09-28T19:13:00Z').findings.some((entry) => entry.kind === 'development_lane_error'), false);

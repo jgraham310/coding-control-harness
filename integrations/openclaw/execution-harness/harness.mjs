@@ -921,9 +921,8 @@ if (command === "status") {
     // recovery. A persisted hold makes repeated watch ticks side-effect free.
     if (item.dispatch?.errorHold) continue;
     const { error: laneError, snapshot, streamOffset } = liveLaneError(item);
-    if (snapshot && process.argv.includes("--apply")) item.dispatch.paneBaseline = snapshot;
-    if (streamOffset !== undefined && process.argv.includes("--apply")) item.dispatch.paneStream.offset = streamOffset;
-    if (classifyObservation({ laneError, blockedReason: item.blocker }) === "lane_error") {
+    const errorObservation = classifyObservation({ laneError, blockedReason: item.blocker });
+    if (errorObservation === "lane_error") {
       const evidence = `development_lane_error:${laneError}`;
       findings.push({ issue: item.issue, phase: item.phase, kind: "development_lane_error", evidence, nextAction: "Triage the executor error and explicitly rearm this lane after repair." });
       if (process.argv.includes("--apply")) {
@@ -936,6 +935,12 @@ if (command === "status") {
         event(state, { at, laneId: item.id, kind: "development_lane_error", evidence });
       }
       continue;
+    }
+    // A prior blocker remains authoritative, but must not consume a fresh
+    // pane marker. After explicit unblock, the unchanged bytes are rechecked.
+    if (errorObservation !== "blocked" && process.argv.includes("--apply")) {
+      if (snapshot) item.dispatch.paneBaseline = snapshot;
+      if (streamOffset !== undefined) item.dispatch.paneStream.offset = streamOffset;
     }
     const unhealthyDispatch = dispatchHealth(item);
     if (unhealthyDispatch) {
