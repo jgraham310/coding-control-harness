@@ -7,7 +7,7 @@ import { applyDecision, completionReceipt, reconcileLane, validateLane } from ".
 import { loadReviewRegistration } from "../../../src/review-registration.mjs";
 
 export function observeCompletionLane(lane, {
-  capture = (name) => execFileSync("tmux", ["capture-pane", "-p", "-t", `=${name}`, "-S", "-80"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }),
+  capture = (name) => execFileSync("tmux", ["capture-pane", "-p", "-t", `=${name}:`, "-S", "-80"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }),
   listSessions = () => execFileSync("tmux", ["list-sessions", "-F", "#{session_name}"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }),
   processStatus = (pid) => execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }),
 } = {}) {
@@ -25,8 +25,20 @@ export function observeCompletionLane(lane, {
   }
   try {
     const output = capture(lane.sessionName);
-    const last = output.trimEnd().split("\n").at(-1) ?? "";
+    const lines = output.trimEnd().split("\n");
+    const last = lines.at(-1) ?? "";
     if (/^(?:\$|%|>)\s*$/.test(last)) pane = "idle_prompt";
+    // Claude's idle prompt is followed by status chrome, so it is not the
+    // final pane line. Require a terminal "done" marker before that prompt;
+    // pane text alone never proves command failure or grants redispatch.
+    const tail = lines.slice(-16);
+    const done = tail.findLastIndex((line) => /^✻ .* · done /u.test(line.trim()));
+    const prompt = tail.findLastIndex((line) => /^❯(?:\s|$)/u.test(line.trim()));
+    if (done >= 0 && prompt > done && tail.slice(prompt + 1).every((line) => {
+      const trimmed = line.trim();
+      return !trimmed || /^─+$/u.test(trimmed) || trimmed === "[PONYTAIL]" ||
+        /^⏵⏵ auto mode on$/u.test(trimmed);
+    })) pane = "idle_prompt";
   } catch {
     try {
       const sessions = listSessions().trimEnd().split("\n");
