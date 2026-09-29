@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { collectCommentPages, loadReviewRegistration } from "../src/review-registration.mjs";
-import { applyDecision, completionReceipt, reconcileLane } from "../src/completion-controller.mjs";
+import { applyDecision, classifyObservation, completionReceipt, detectPaneError, reconcileLane } from "../src/completion-controller.mjs";
 
 const lane = {
   id: "tems-624", owner: "tems-cto", sessionName: "tems-pr625-repair", worktree: "/work/tems-624",
@@ -41,6 +41,7 @@ const record = { schema: "independent-review-registration/v1", laneId: registere
 const comment = { id: 7, user: { login: "independent-reviewer" }, author_association: "COLLABORATOR", body: `independent-review-registration/v1 ${JSON.stringify(record)}` };
 assert.equal(reconcileLane(registeredReview, { lastCommand: { status: "error", evidenceRef: "failure-1" } }, { now: at, reviewRegistration: { ...record, registrar: "independent-reviewer" } }).action, "hold", "caller-computable approval cannot bypass authentication");
 assert.equal(loadReviewRegistration(registeredReview, { client: () => [{ ...comment, author_association: "NONE" }] }), null, "untrusted GitHub actor cannot register review");
+assert.equal(loadReviewRegistration(registeredReview, { client: () => [{ ...comment, user: { login: "JGRAHAM310" }, author_association: "OWNER" }] }), null, "trusted repository membership cannot turn the implementer into an independent registrar");
 assert.equal(collectCommentPages((page) => page === 1 ? Array.from({ length: 100 }, (_, id) => ({ id })) : [comment]).length, 101, "registration beyond first page remains reachable");
 const authenticated = loadReviewRegistration(registeredReview, { client: () => [comment] });
 assert.equal(authenticated.githubCommentId, 7);
@@ -57,6 +58,20 @@ assert.equal(reconcileLane(lane, { pane: "idle_prompt" }, { now: at }).reason, "
 assert.equal(reconcileLane(lane, { lastCommand: { status: "error" } }, { now: at }).reason, "unverified_failure_evidence", "uncited error cannot dispatch");
 decision = reconcileLane(lane, { pane: "executing" }, { now: at });
 assert.equal(decision.action, "heartbeat");
+decision = reconcileLane(lane, { pane: "executing", lastCommand: { status: "rejected", evidenceRef: "failure-1" } }, { now: at });
+assert.equal(decision.action, "triage_error");
+assert.equal(decision.reason, "command_rejected");
+decision = reconcileLane(lane, { pane: "executing", completedEvidence: true, laneError: "hook_module_not_found" }, { now: at });
+assert.equal(decision.action, "triage_error");
+assert.equal(decision.priority, "immediate");
+assert.equal(decision.argv, undefined);
+let triaged = applyDecision(lane, decision, { now: at });
+assert.equal(triaged.retry.attempts, 0);
+assert.equal(triaged.lastError.reason, "hook_module_not_found");
+assert.equal(reconcileLane(triaged, { pane: "executing", laneError: "hook_module_not_found" }, { now: at }).action, "none");
+assert.equal(classifyObservation({ blockedReason: "approval required", pane: "executing", laneError: "hook_module_not_found" }), "blocked");
+assert.equal(detectPaneError("Error: Cannot find module '/deleted/hook.js'\n"), "Error: Cannot find module '/deleted/hook.js'");
+assert.equal(detectPaneError("Prior Error: Cannot find module is documented"), "");
 decision = reconcileLane(lane, { completedEvidence: true }, { now: at });
 assert.equal(decision.action, "verify_completion");
 assert.equal(completionReceipt(lane, { completedEvidence: true }, decision, { now: at }).laneId, "tems-624");

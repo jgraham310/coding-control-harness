@@ -3,7 +3,7 @@ import { observeCompletionLane, reconcileCompletionLanes } from "./completion-wa
 
 const at = "2026-09-28T20:00:00Z";
 const lane = {
-  id: "synthetic-2712", issue: 2712, owner: "claude", sessionName: "synthetic-2712", worktree: "/tmp",
+  id: "synthetic-2712", issue: 2712, repository: "jgraham310/tems", owner: "claude", sessionName: "synthetic-2712", worktree: "/tmp",
   completionPredicate: "exact-head review", deadlineAt: "2026-09-29T20:00:00Z",
   state: "executing", retry: { attempts: 0, maxAttempts: 1 },
   nextAction: { argv: ["/bin/echo", "review"] },
@@ -26,6 +26,14 @@ assert.equal(saved[1].lastDispatch.launchStatus, "launched");
 assert.equal(reconcileCompletionLanes(state, options).length, 0, "same observation cannot claim twice");
 assert.equal(dispatches, 1);
 assert.equal(state.completionLanes[0].retry.attempts, 1);
+
+const sourceHeldState = { lanes: [{ active: true, repository: "jgraham310/tems", issue: 2712,
+  dispatch: { errorHold: { evidence: "development_lane_error:hook_module_not_found" } } }], completionLanes: [structuredClone(lane)] };
+const sourceHeld = reconcileCompletionLanes(sourceHeldState, { ...options, observe: () => ({ completedEvidence: true, lastCommand: observation.lastCommand }) });
+assert.equal(sourceHeld[0].kind, "completion_development_lane_error_hold", "source error outranks claimed completion and registered retry");
+assert.equal(sourceHeldState.completionLanes[0].state, "blocked");
+assert.equal(sourceHeldState.completionLanes[0].retry.attempts, 0);
+assert.equal(dispatches, 1, "source hold cannot dispatch a completion lane");
 
 const pendingState = { completionLanes: [{ ...structuredClone(state.completionLanes[0]), state: "recovering", lastDispatch: { ...state.completionLanes[0].lastDispatch, launchStatus: "pending", pid: undefined } }] };
 assert.equal(reconcileCompletionLanes(pendingState, options)[0].kind, "completion_launch_outcome_uncertain", "crash between reservation and launch is visible");

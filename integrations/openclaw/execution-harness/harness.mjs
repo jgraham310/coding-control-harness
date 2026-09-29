@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { handoffRecord } from "./deterministic-engine.mjs";
 import { emptyRuntime, registerWorkState, validateRuntime, workStateContext } from "./work-state.mjs";
 import { acquireStateLock } from "./state-lock.mjs";
+import { classifyObservation, detectPaneError } from "../../../src/completion-controller.mjs";
 import { reconcileCompletionLanes } from "./completion-watch.mjs";
 import { validateLane } from "../../../src/completion-controller.mjs";
 import { loadReviewRegistration } from "../../../src/review-registration.mjs";
@@ -328,6 +329,96 @@ function tmuxPaneState(session, pane) {
     return { ok: false, reason: `tmux session/pane is not live: ${session}${pane ? ` (${pane})` : ""}` };
   }
 }
+function paneSnapshot(item) {
+  if (process.argv.includes("--skip-tmux")) return null;
+  try {
+    const output = execFileSync("tmux", ["capture-pane", "-p", "-t", item.dispatch.pane, "-S", "-80"], { encoding: "utf8", timeout: 5000 });
+    return { pane: item.dispatch.pane, lines: output.replace(/\n+$/, "").split(/\r?\n/) };
+  } catch { return null; }
+}
+function unseenPaneOutput(previous, current) {
+  if (!previous || previous.pane !== current.pane || !Array.isArray(previous.lines)) return current.lines;
+  const old = previous.lines;
+  // The capture window slides as new lines arrive. Match the longest suffix
+  // retained from the acknowledged snapshot, then inspect only newer lines.
+  for (let count = Math.min(old.length, current.lines.length); count > 0; count--) {
+    if (old.slice(-count).every((line, index) => line === current.lines[index])) return current.lines.slice(count);
+  }
+  // A shell may repaint its final prompt in place without advancing a line.
+  let prefix = 0;
+  while (prefix < Math.min(old.length, current.lines.length) && old[prefix] === current.lines[prefix]) prefix++;
+  if (prefix) return current.lines.slice(prefix);
+  return current.lines;
+}
+function panePipeActive(pane) {
+  try { return execFileSync("tmux", ["display-message", "-p", "-t", pane, "#{pane_pipe}"], { encoding: "utf8", timeout: 5000 }).trim() === "1"; }
+  catch { return false; }
+}
+function paneWidth(pane) {
+  try {
+    const width = Number(execFileSync("tmux", ["display-message", "-p", "-t", pane, "#{pane_width}"], { encoding: "utf8", timeout: 5000 }).trim());
+    return Number.isInteger(width) && width > 0 ? width : null;
+  } catch { return null; }
+}
+function rearmPaneStream(item) {
+  const existing = item.dispatch.paneStream;
+  if (existing?.pane === item.dispatch.pane && panePipeActive(item.dispatch.pane)) {
+    try {
+      if (existing.width && paneWidth(existing.pane) === existing.width) {
+        const offset = fs.statSync(existing.path).size;
+        const snapshot = paneSnapshot(item);
+        if (!snapshot) fail(`Cannot rearm #${item.issue}; the attached pane could not be captured for a fresh-output baseline.`);
+        return { snapshot, stream: { ...existing, offset } };
+      }
+      execFileSync("tmux", ["pipe-pane", "-t", existing.pane], { timeout: 5000 });
+      if (panePipeActive(existing.pane)) throw new Error("old width-bound output pipe remains active");
+    }
+    catch (error) { fail(`Cannot rearm #${item.issue}; the pane output stream is unavailable: ${error.message}`); }
+  }
+  if (panePipeActive(item.dispatch.pane)) fail(`Cannot rearm #${item.issue}; the pane already has another output pipe.`);
+  const width = paneWidth(item.dispatch.pane);
+  if (!width) fail(`Cannot rearm #${item.issue}; pane width is unavailable.`);
+  const streamPath = `${path.resolve(stateFile)}.${item.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.${Date.now()}.pane-output`;
+  try {
+    fs.closeSync(fs.openSync(streamPath, "wx", 0o600));
+    const quoted = `'${streamPath.replace(/'/g, "'\\''")}'`;
+    const node = `'${process.execPath.replace(/'/g, "'\\''")}'`;
+    const filter = `'${path.resolve(here, "../../../src/pane-error-stream.mjs").replace(/'/g, "'\\''")}'`;
+    execFileSync("tmux", ["pipe-pane", "-O", "-o", "-t", item.dispatch.pane, `${node} ${filter} ${width} >> ${quoted}`], { timeout: 5000 });
+    if (!panePipeActive(item.dispatch.pane)) throw new Error("output pipe did not attach");
+    if (paneWidth(item.dispatch.pane) !== width) throw new Error("pane width changed during output monitor installation");
+    const snapshot = paneSnapshot(item);
+    if (!snapshot) throw new Error("attached pane could not be captured for a fresh-output baseline");
+    if (existing?.pane === item.dispatch.pane) {
+      try { fs.unlinkSync(existing.path); } catch {}
+    }
+    return { snapshot, stream: { pane: item.dispatch.pane, path: streamPath, offset: 0, width } };
+  } catch (error) {
+    if (panePipeActive(item.dispatch.pane)) {
+      try { execFileSync("tmux", ["pipe-pane", "-t", item.dispatch.pane], { timeout: 5000 }); } catch {}
+    }
+    try { fs.unlinkSync(streamPath); } catch {}
+    fail(`Cannot rearm #${item.issue}; pane output stream failed: ${error.message}`);
+  }
+}
+function liveLaneError(item) {
+  if (item.dispatch?.status !== "attached") return { error: "", snapshot: null };
+  // Explicit adapter error is preferred; otherwise inspect the actual executor
+  // pane. A failed capture is handled by dispatchHealth, not claimed as proof.
+  if (item.dispatch.laneError) return { error: String(item.dispatch.laneError).trim(), snapshot: null };
+  const stream = item.dispatch.paneStream;
+  if (stream) {
+    try {
+      if (stream.pane !== item.dispatch.pane || !panePipeActive(stream.pane)) throw new Error("output pipe detached");
+      if (!stream.width || paneWidth(stream.pane) !== stream.width) throw new Error("pane width changed");
+      const output = fs.readFileSync(stream.path);
+      if (output.length < stream.offset) throw new Error("output stream truncated");
+      return { error: detectPaneError(output.subarray(stream.offset).toString("utf8")), snapshot: null, streamOffset: output.length };
+    } catch { return { error: "pane_output_monitor_unavailable", snapshot: null }; }
+  }
+  const snapshot = paneSnapshot(item);
+  return { error: snapshot ? detectPaneError(unseenPaneOutput(item.dispatch.paneBaseline, snapshot).join("\n")) : "", snapshot };
+}
 function dispatchHealth(item) {
   if (!item.dispatch || item.dispatch.status !== "attached") return null;
   if (process.argv.includes("--skip-tmux")) return null;
@@ -599,7 +690,15 @@ if (command === "status") {
     if (missing.length) fail(`Cannot mark #${item.issue} production verified; exact-artifact verification missing: ${missing.join(", ")}.`);
   }
   const at = now();
+  if (item.dispatch?.errorHold && to !== "blocked") {
+    const { snapshot, stream } = rearmPaneStream(item);
+    item.dispatch.paneBaseline = snapshot;
+    item.dispatch.paneStream = stream;
+  }
   item.phase = to;
+  if (item.dispatch?.errorHold && to !== "blocked") {
+    item.dispatch.errorHold = null;
+  }
   if (to === "completed") {
     item.active = false;
     item.nextActionDueAt = null;
@@ -676,12 +775,53 @@ if (command === "status") {
   if (observed.cwd !== worktree) fail(`tmux pane cwd mismatch for ${item.id}: expected ${worktree}, observed ${observed.cwd}. Do not attach a different lane.`);
   const at = now();
   item.tmuxSession = session;
-  item.dispatch = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at };
-  item.phase = "implementing";
-  item.heartbeatDueAt = deadline;
-  item.nextActionDueAt = deadline;
-  item.lastEvidence = { at, detail: evidence };
-  event(state, { at, laneId: item.id, kind: "development_dispatch_attached", evidence });
+  const attachment = { ...item.dispatch, status: "attached", session, pane: observed.target, worktree, attachedAt: at, laneError: null };
+  if (attachment.paneStream?.pane !== observed.target) attachment.paneStream = null;
+  const { stream } = rearmPaneStream({ ...item, dispatch: attachment });
+  attachment.paneStream = stream;
+  // Install the pipe before the final classified capture: bytes emitted in
+  // between are then visible in either that capture or the fresh stream.
+  const baseline = paneSnapshot({ dispatch: attachment });
+  if (!baseline) {
+    if (stream.path !== item.dispatch.paneStream?.path) {
+      try { execFileSync("tmux", ["pipe-pane", "-t", observed.target], { timeout: 5000 }); } catch {}
+      try { fs.unlinkSync(stream.path); } catch {}
+    }
+    fail(`Cannot attach #${item.issue}; the pane could not be captured for a fresh-output baseline.`);
+  }
+  const initialError = item.dispatch.status === "ready" ? detectPaneError(baseline.lines.join("\n")) : "";
+  const previousStream = item.dispatch.paneStream;
+  if (previousStream && previousStream.pane !== observed.target && panePipeActive(previousStream.pane)) {
+    try {
+      execFileSync("tmux", ["pipe-pane", "-t", previousStream.pane], { timeout: 5000 });
+      if (panePipeActive(previousStream.pane)) throw new Error("old pane output pipe remains active");
+      try { fs.unlinkSync(previousStream.path); } catch {}
+    } catch (error) {
+      if (attachment.paneStream) {
+        try { execFileSync("tmux", ["pipe-pane", "-t", observed.target], { timeout: 5000 }); } catch {}
+      }
+      fail(`Cannot attach #${item.issue}; old pane output pipe could not be closed: ${error.message}`);
+    }
+  }
+  item.dispatch = { ...attachment, errorHold: null, paneBaseline: baseline };
+  if (initialError) {
+    const errorEvidence = `development_lane_error:${initialError}`;
+    item.phase = "stalled";
+    item.blocker = errorEvidence;
+    item.nextAction = "Triage the executor error and explicitly rearm this lane after repair.";
+    item.heartbeatDueAt = null;
+    item.nextActionDueAt = null;
+    item.dispatch.errorHold = { at, evidence: errorEvidence };
+    item.lastEvidence = { at, detail: errorEvidence };
+    event(state, { at, laneId: item.id, kind: "development_lane_error", evidence: errorEvidence });
+  } else {
+    item.phase = "implementing";
+    item.blocker = null;
+    item.heartbeatDueAt = deadline;
+    item.nextActionDueAt = deadline;
+    item.lastEvidence = { at, detail: evidence };
+    event(state, { at, laneId: item.id, kind: "development_dispatch_attached", evidence });
+  }
   save(stateFile, state);
   print({ lane: item, event: state.events.at(-1) });
 } else if (command === "authorize-immediate-release") {
@@ -776,10 +916,32 @@ if (command === "status") {
   const at = now();
   const timestamp = Date.parse(at);
   const findings = portfolioFindings(state, at, process.argv.includes("--apply"));
-  findings.push(...reconcileCompletionLanes(state, { at, apply: process.argv.includes("--apply"), save: (updated) => save(stateFile, updated), logDir: path.join(path.dirname(stateFile), "completion-logs"),
-    authorizeDispatch: (completion, reserve, launch) => withCompletionGrant(workStatePath(), completion, reserve, launch),
-    recoverReservation: (completion, restore) => recoverUnclaimedReservation(workStatePath(), completion, restore) }));
   for (const item of state.lanes.filter((candidate) => candidate.active)) {
+    // Error evidence outranks pane activity, claimed completion, and automatic
+    // recovery. A persisted hold makes repeated watch ticks side-effect free.
+    if (item.dispatch?.errorHold) continue;
+    const { error: laneError, snapshot, streamOffset } = liveLaneError(item);
+    const errorObservation = classifyObservation({ laneError, blockedReason: item.blocker });
+    if (errorObservation === "lane_error") {
+      const evidence = `development_lane_error:${laneError}`;
+      findings.push({ issue: item.issue, phase: item.phase, kind: "development_lane_error", evidence, nextAction: "Triage the executor error and explicitly rearm this lane after repair." });
+      if (process.argv.includes("--apply")) {
+        item.phase = "stalled";
+        item.blocker = evidence;
+        item.nextAction = "Triage the executor error and explicitly rearm this lane after repair.";
+        item.heartbeatDueAt = null;
+        item.nextActionDueAt = null;
+        item.dispatch.errorHold = { at, evidence };
+        event(state, { at, laneId: item.id, kind: "development_lane_error", evidence });
+      }
+      continue;
+    }
+    // A prior blocker remains authoritative, but must not consume a fresh
+    // pane marker. After explicit unblock, the unchanged bytes are rechecked.
+    if (errorObservation !== "blocked" && process.argv.includes("--apply")) {
+      if (snapshot) item.dispatch.paneBaseline = snapshot;
+      if (streamOffset !== undefined) item.dispatch.paneStream.offset = streamOffset;
+    }
     const unhealthyDispatch = dispatchHealth(item);
     if (unhealthyDispatch) {
       const phaseBeforeInvalidation = item.phase;
@@ -922,6 +1084,11 @@ if (command === "status") {
       event(state, { at, laneId: item.id, kind, evidence: item.blocker });
     }
   }
+  // TEMS source-pane errors must establish their durable hold before a matching
+  // completion lane can verify completion or consume a review/WorkState grant.
+  findings.push(...reconcileCompletionLanes(state, { at, apply: process.argv.includes("--apply"), save: (updated) => save(stateFile, updated), logDir: path.join(path.dirname(stateFile), "completion-logs"),
+    authorizeDispatch: (completion, reserve, launch) => withCompletionGrant(workStatePath(), completion, reserve, launch),
+    recoverReservation: (completion, restore) => recoverUnclaimedReservation(workStatePath(), completion, restore) }));
   if (!process.argv.includes("--skip-tmux")) {
     // Findings only, no event: a reaped idle session needs no agent turn.
     for (const session of idleTmuxSessions(state, timestamp, Number(arg("--tmux-idle-hours", "24")))) {

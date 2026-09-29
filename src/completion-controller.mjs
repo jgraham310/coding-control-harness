@@ -35,6 +35,7 @@ export function validateLane(lane) {
 export function classifyObservation(observation = {}) {
   // Failure evidence outranks an aggregate completion flag and pane label.
   if (observation.blockedReason) return "blocked";
+  if (text(observation.laneError)) return "lane_error";
   if (observation.lastCommand?.status === "rejected") return "command_rejected";
   if (observation.lastCommand?.status === "error" || observation.error) return "runtime_error";
   if (observation.pane === "exited") return "process_exited";
@@ -46,12 +47,23 @@ export function classifyObservation(observation = {}) {
   return "unknown";
 }
 
+// Match only explicit error lines; ordinary prose mentioning a prior failure is not a gate.
+export function detectPaneError(pane = "") {
+  return String(pane).split(/\r?\n/).map((part) => part.trim())
+    .find((part) => /^(?:Error:\s+Cannot find module\b|(?:Error\s+)?\[?MODULE_NOT_FOUND\]?\b|hook_module_not_found\b)/i.test(part)) || "";
+}
+
 export function reconcileLane(lane, observation, { now = new Date().toISOString(), reviewRegistration = null } = {}) {
   const validation = validateLane(lane);
   if (!validation.valid) return { state: "blocked", action: "hold", reason: "invalid_lane_contract", errors: validation.errors };
   if (TERMINAL.has(lane.state)) return { state: lane.state, action: "none", reason: "terminal_lane" };
   if (Date.parse(lane.deadlineAt) <= Date.parse(now)) return { state: "blocked", action: "hold", reason: "deadline_exceeded" };
   const observed = classifyObservation(observation);
+  if (observed === "lane_error" || (observed === "command_rejected" && observation.pane === "executing" && !lane.reviewRequired)) {
+    const reason = observed === "lane_error" ? text(observation.laneError) : "command_rejected";
+    if (lane.state === "recovering" && lane.lastError?.reason === reason) return { state: "recovering", action: "none", reason: "error_already_in_triage" };
+    return { state: "recovering", action: "triage_error", reason, priority: "immediate" };
+  }
   if (observed === "completed") return { state: "completed", action: "verify_completion", reason: "completion_evidence_observed" };
   if (observed === "blocked") return { state: "blocked", action: "hold", reason: text(observation.blockedReason) };
   if (ACTIVE.has(observed)) return { state: observed, action: "heartbeat", reason: "lane_active" };
@@ -93,6 +105,9 @@ export function applyDecision(lane, decision, { now = new Date().toISOString() }
     next.state = "executing";
     next.retry.attempts += 1;
     next.lastDispatch = { at: now, argvDigest: decision.actionDigest, observationDigest: decision.observationDigest, reason: decision.reason };
+  } else if (decision.action === "triage_error") {
+    next.state = "recovering";
+    next.lastError = { at: now, reason: decision.reason };
   } else if (decision.action === "heartbeat") {
     next.state = decision.state;
     next.lastHeartbeatAt = now;
