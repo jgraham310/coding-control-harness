@@ -16,7 +16,7 @@ export function evaluateCtoCadence(observation, prior = null, { maxNoProgressTur
   const noProgressTurns = sameProgress ? (prior?.noProgressTurns ?? 0) : 0;
   const state = { fingerprint, progressRevision: observation.progressRevision, noProgressTurns };
   if (observation.phase !== "active" && observation.phase !== "ready") return { fire: false, reason: "not_actionable", state };
-  if (prior?.fingerprint === fingerprint) return { fire: false, reason: "unchanged", state };
+  if (sameProgress && prior?.fingerprint === fingerprint) return { fire: false, reason: "unchanged", state };
   if (noProgressTurns >= maxNoProgressTurns) return { fire: false, reason: "no_progress_budget_exhausted", state };
   return { fire: true, reason: "material_change", state: { ...state, noProgressTurns: noProgressTurns + 1 } };
 }

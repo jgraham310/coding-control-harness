@@ -38,6 +38,14 @@ try {
   assert.equal(verifyRuntimeActivation({ ...evidence, ci: { status: "passed", headSha: mergedHead } }).reason, "evidence_unbound");
   assert.equal(verifyRuntimeActivation({ ...evidence, ci: { status: "passed", headSha: unrelated },
     review: { status: "passed", headSha: unrelated } }).reason, "candidate_not_merged");
+  fs.writeFileSync(path.join(repo, ".gitignore"), "ignored-watch.mjs\n");
+  git(repo, "add", ".gitignore"); git(repo, "commit", "-qm", "ignore-fixture");
+  const ignoreHead = git(repo, "rev-parse", "HEAD");
+  fs.writeFileSync(path.join(repo, "ignored-watch.mjs"), "console.log('unreviewed')\n");
+  assert.equal(verifyRuntimeActivation({ ...evidence, entrypoint: path.join(repo, "ignored-watch.mjs"),
+    mergedHead: ignoreHead, ci: { status: "passed", headSha: ignoreHead },
+    review: { status: "passed", headSha: ignoreHead }, firstCheck: { status: "passed", headSha: ignoreHead } }).reason,
+  "entrypoint_untracked");
   assert.equal(verifyRuntimeActivation({ ...evidence, firstCheck: { status: "failed", headSha: mergedHead } }).reason, "evidence_unbound");
   assert.equal(verifyRuntimeActivation({ ...evidence, entrypoint: path.join(temp, "missing") }).reason, "runtime_unavailable");
   console.log("merge-to-runtime eval: clean bound checkout passes; stale link, dirty checkout, and bad evidence hold");

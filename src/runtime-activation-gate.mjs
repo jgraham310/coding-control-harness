@@ -20,6 +20,10 @@ export function verifyRuntimeActivation({ entrypoint, mergedHead, ci, review, fi
     // parent is the old base and must never substitute for review evidence.
     if (ci.headSha !== mergedHead && parents[1] !== ci.headSha)
       return { ok: false, reason: "candidate_not_merged" };
+    const relative = path.relative(root, real);
+    if (relative.startsWith(`..${path.sep}`) || relative === ".." ||
+        !git(root, "ls-files", "--", relative))
+      return { ok: false, reason: "entrypoint_untracked" };
     if (git(root, "status", "--porcelain", "--untracked-files=normal")) return { ok: false, reason: "dirty_runtime_checkout" };
     return { ok: true, reason: "verified", root, entrypoint: real, headSha: mergedHead };
   } catch { return { ok: false, reason: "runtime_unavailable" }; }
