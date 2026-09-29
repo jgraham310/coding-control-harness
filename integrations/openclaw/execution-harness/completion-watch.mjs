@@ -34,8 +34,11 @@ export function observeCompletionLane(lane, {
     const tail = lines.slice(-16);
     const done = tail.findLastIndex((line) => /^✻ .* · done /u.test(line.trim()));
     const prompt = tail.findLastIndex((line) => /^❯(?:\s|$)/u.test(line.trim()));
-    if (done >= 0 && prompt > done && tail.slice(prompt + 1).every((line) =>
-      !line.trim() || /^[─⏵\[ ]/u.test(line.trim()))) pane = "idle_prompt";
+    if (done >= 0 && prompt > done && tail.slice(prompt + 1).every((line) => {
+      const trimmed = line.trim();
+      return !trimmed || /^─+$/u.test(trimmed) || trimmed === "[PONYTAIL]" ||
+        /^⏵⏵ auto mode on$/u.test(trimmed);
+    })) pane = "idle_prompt";
   } catch {
     try {
       const sessions = listSessions().trimEnd().split("\n");

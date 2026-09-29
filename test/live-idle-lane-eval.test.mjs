@@ -21,7 +21,7 @@ function observe(lane) {
   });
 }
 const stopped = `Node.js v26.5.0\ncode: 'MODULE_NOT_FOUND'\n✻ Cooked for 15m 30s · done 2:58 PM\n────────────\n❯ Add the acceptance gate\n────────────\n[PONYTAIL]\n⏵⏵ auto mode on\n`;
-const active = `Handled Error: expected fixture\n❯ old prompt\nWorking on current test…\n`;
+const active = `Handled Error: expected fixture\n✻ Cooked for 15m 30s · done 2:58 PM\n❯ old prompt\n[Building current test…]\n`;
 const lane = (id, issue, reviewRequired) => ({ id, issue, owner: "claude", sessionName: id,
   worktree: temp, completionPredicate: "exact-head review", deadlineAt: "2026-09-30T00:00:00Z",
   state: "executing", retry: { attempts: 0, maxAttempts: 1 }, reviewRequired,
