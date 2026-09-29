@@ -169,6 +169,18 @@ try {
   assert.equal(stored.lanes[0].dispatch.errorHold, null, 'resize hold clears only after a fresh monitor is active');
   delete env.TEST_PANE_WIDTH;
 
+  const completionLane = { id: 'tems-566-completion', issue: 566, repository: 'jgraham310/tems', owner: 'Claude Code',
+    sessionName: 'fake', worktree: root, completionPredicate: 'verified exact head', deadlineAt: '2099-01-01T00:00:00Z',
+    state: 'executing', retry: { attempts: 0, maxAttempts: 1 }, nextAction: { argv: ['/bin/echo', 'review'] },
+    completedEvidence: true };
+  fs.writeFileSync(paneFile, "Error: Cannot find module '/deleted/hook.js'\n");
+  write({ ...fixture, completionLanes: [completionLane] });
+  run('2026-09-28T19:12:10Z');
+  stored = JSON.parse(fs.readFileSync(stateFile));
+  assert.equal(stored.lanes[0].phase, 'stalled', 'source lane error must hold first');
+  assert.equal(stored.completionLanes[0].state, 'blocked', 'claimed completion cannot pass before source error');
+  assert.equal(stored.completionLanes[0].retry.attempts, 0, 'source hold does not spend a retry');
+
   write({ ...fixture, lanes: [{ ...lane, blocker: 'approval required' }] });
   assert.equal(run('2026-09-28T19:12:00Z').findings.some((entry) => entry.kind === 'development_lane_error'), false);
   fs.writeFileSync(paneFile, 'Execution continuing normally\n');

@@ -916,9 +916,6 @@ if (command === "status") {
   const at = now();
   const timestamp = Date.parse(at);
   const findings = portfolioFindings(state, at, process.argv.includes("--apply"));
-  findings.push(...reconcileCompletionLanes(state, { at, apply: process.argv.includes("--apply"), save: (updated) => save(stateFile, updated), logDir: path.join(path.dirname(stateFile), "completion-logs"),
-    authorizeDispatch: (completion, reserve, launch) => withCompletionGrant(workStatePath(), completion, reserve, launch),
-    recoverReservation: (completion, restore) => recoverUnclaimedReservation(workStatePath(), completion, restore) }));
   for (const item of state.lanes.filter((candidate) => candidate.active)) {
     // Error evidence outranks pane activity, claimed completion, and automatic
     // recovery. A persisted hold makes repeated watch ticks side-effect free.
@@ -1082,6 +1079,11 @@ if (command === "status") {
       event(state, { at, laneId: item.id, kind, evidence: item.blocker });
     }
   }
+  // TEMS source-pane errors must establish their durable hold before a matching
+  // completion lane can verify completion or consume a review/WorkState grant.
+  findings.push(...reconcileCompletionLanes(state, { at, apply: process.argv.includes("--apply"), save: (updated) => save(stateFile, updated), logDir: path.join(path.dirname(stateFile), "completion-logs"),
+    authorizeDispatch: (completion, reserve, launch) => withCompletionGrant(workStatePath(), completion, reserve, launch),
+    recoverReservation: (completion, restore) => recoverUnclaimedReservation(workStatePath(), completion, restore) }));
   if (!process.argv.includes("--skip-tmux")) {
     // Findings only, no event: a reaped idle session needs no agent turn.
     for (const session of idleTmuxSessions(state, timestamp, Number(arg("--tmux-idle-hours", "24")))) {

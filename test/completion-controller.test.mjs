@@ -41,6 +41,7 @@ const record = { schema: "independent-review-registration/v1", laneId: registere
 const comment = { id: 7, user: { login: "independent-reviewer" }, author_association: "COLLABORATOR", body: `independent-review-registration/v1 ${JSON.stringify(record)}` };
 assert.equal(reconcileLane(registeredReview, { lastCommand: { status: "error", evidenceRef: "failure-1" } }, { now: at, reviewRegistration: { ...record, registrar: "independent-reviewer" } }).action, "hold", "caller-computable approval cannot bypass authentication");
 assert.equal(loadReviewRegistration(registeredReview, { client: () => [{ ...comment, author_association: "NONE" }] }), null, "untrusted GitHub actor cannot register review");
+assert.equal(loadReviewRegistration(registeredReview, { client: () => [{ ...comment, user: { login: "JGRAHAM310" }, author_association: "OWNER" }] }), null, "trusted repository membership cannot turn the implementer into an independent registrar");
 assert.equal(collectCommentPages((page) => page === 1 ? Array.from({ length: 100 }, (_, id) => ({ id })) : [comment]).length, 101, "registration beyond first page remains reachable");
 const authenticated = loadReviewRegistration(registeredReview, { client: () => [comment] });
 assert.equal(authenticated.githubCommentId, 7);

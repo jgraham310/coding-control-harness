@@ -34,7 +34,9 @@ export function isAuthenticatedReviewRegistration(registration, lane) {
     && registration.reviewer === lane.nextAction?.reviewer
     && registration.headSha === lane.headSha
     && registration.actionDigest === sha(lane.nextAction?.argv)
-    && registration.githubCommentId !== undefined;
+    && registration.githubCommentId !== undefined
+    && registration.implementerLogin === lane.implementerLogin
+    && registration.registrar?.toLowerCase() !== lane.implementerLogin?.toLowerCase();
 }
 
 export function loadReviewRegistration(lane, { client = githubComments } = {}) {
@@ -45,7 +47,7 @@ export function loadReviewRegistration(lane, { client = githubComments } = {}) {
   for (const comment of comments.slice().reverse()) {
     if (!trustedAssociations.has(comment.author_association)) continue;
     const registrar = comment.user?.login;
-    if (!registrar) continue;
+    if (typeof registrar !== "string" || !registrar || registrar.toLowerCase() === lane.implementerLogin.toLowerCase()) continue;
     const body = String(comment.body ?? "").trim();
     if (!body.startsWith(registrationPrefix)) continue;
     let record;

@@ -56,6 +56,15 @@ export function reconcileCompletionLanes(state, { at, apply, save, observe = obs
   for (let index = 0; index < (state.completionLanes ?? []).length; index++) {
     const lane = state.completionLanes[index];
     if (["blocked", "completed", "failed"].includes(lane.state)) continue;
+    const sourceHold = (state.lanes ?? []).find((source) => source.active && source.repository === lane.repository
+      && source.issue === lane.issue && source.dispatch?.errorHold);
+    if (sourceHold) {
+      const observation = { blockedReason: sourceHold.dispatch.errorHold.evidence };
+      const decision = { state: "blocked", action: "hold", reason: "development_lane_error_hold", priority: "immediate" };
+      finding(lane, observation, decision);
+      if (apply) { state.completionLanes[index] = applyDecision(lane, decision, { now: at }); save(state); }
+      continue;
+    }
     const observation = observe(lane);
     if (lane.lastDispatch?.launchStatus === "pending") {
       // A durable lane reservation can precede the global claim. If the exact
