@@ -1,0 +1,87 @@
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { hasCompletionGrant, withCompletionGrant, recoverUnclaimedReservation, verifyExactWorktree } from "./completion-grant.mjs";
+import { emptyRuntime, recordEvidence, registerWorkState, validateRuntime } from "./work-state.mjs";
+const head = "a".repeat(40);
+const lane = { id: "civicline-2712-review", issue: 2712, repository: "jgraham310/local-government", workStateId: "cto:civicline", workStateVersion: 51,
+  headSha: head, retry: { attempts: 0, maxAttempts: 1 }, lastCommand: { status: "error", evidenceRef: "failure" }, nextAction: { argv: ["codex", "review", "--commit", head] } };
+const actionDigest = crypto.createHash("sha256").update(JSON.stringify(lane.nextAction.argv)).digest("hex");
+const grant = { schema: "completion-retry-grant/v1", laneId: lane.id, issue: lane.issue, repository: lane.repository, headSha: head, actionDigest, failureEvidenceRef: "failure" };
+const runtime = { records: { "cto:civicline": { id: "cto:civicline", phase: "active", version: 51, authorityBoundary: { allowedActions: ["retry_safe"] }, retryPolicy: { maxAttempts: 1 }, evidenceRefs: ["failure", "receipt"] } },
+  evidence: { failure: { status: "verified_command_failure", facts: [{ schema: "command_failure/v1", laneId: lane.id, issue: lane.issue, repository: lane.repository, headSha: head, commandStatus: "error" }] }, receipt: { status: "verified" } }, actions: { action: { workStateId: "cto:civicline", stateVersion: 51, class: "retry_safe", status: "prepared", description: JSON.stringify(grant) } } };
+assert.equal(hasCompletionGrant(runtime, lane), true);
+assert.equal(hasCompletionGrant({ ...runtime, records: { "cto:civicline": { ...runtime.records["cto:civicline"], phase: "blocked" } } }, lane), false);
+assert.equal(hasCompletionGrant({ ...runtime, records: { "cto:civicline": { ...runtime.records["cto:civicline"], authorityBoundary: { allowedActions: ["observe"] } } } }, lane), false);
+assert.equal(hasCompletionGrant({ ...runtime, records: { "cto:civicline": { ...runtime.records["cto:civicline"], retryPolicy: { maxAttempts: 0 } } } }, lane), false);
+assert.equal(hasCompletionGrant(runtime, { ...lane, issue: 2713 }), false);
+assert.equal(hasCompletionGrant(runtime, { ...lane, lastCommand: { status: "error", evidenceRef: "other" } }), false);
+assert.equal(hasCompletionGrant({ ...runtime, evidence: { ...runtime.evidence, failure: { ...runtime.evidence.failure, status: "verified_success" } } }, lane), false);
+assert.equal(hasCompletionGrant({ ...runtime, evidence: { ...runtime.evidence, failure: { ...runtime.evidence.failure, facts: [{ ...runtime.evidence.failure.facts[0], commandStatus: "success" }] } } }, lane), false);
+assert.equal(hasCompletionGrant(runtime, { ...lane, headSha: "b".repeat(40) }), false);
+assert.equal(hasCompletionGrant(runtime, { ...lane, nextAction: { argv: ["/bin/echo", "review"] } }), false);
+assert.equal(hasCompletionGrant({ ...runtime, evidence: { failure: runtime.evidence.failure, receipt: { status: "pending" } } }, lane), false);
+assert.equal(hasCompletionGrant({ ...runtime, actions: { action: { ...runtime.actions.action, status: "succeeded" } } }, lane), false);
+const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "completion-grant-lock-")), "work-state.json");
+fs.writeFileSync(file, JSON.stringify(runtime));
+let launched = 0;
+const reservationFile = path.join(path.dirname(file), "lane-reservation.json");
+assert.throws(() => withCompletionGrant(file, lane, () => {
+  fs.writeFileSync(reservationFile, JSON.stringify({ launchStatus: "pending" }));
+  throw new Error("crash after lane reservation");
+}, () => { launched++; }, { validate: () => true, verifyWorktree: () => true }), /crash after lane reservation/);
+assert.equal(JSON.parse(fs.readFileSync(reservationFile, "utf8")).launchStatus, "pending");
+assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).actions.action.dispatchClaim, undefined, "failed reservation does not consume global grant");
+assert.equal(launched, 0);
+let reserved = false;
+assert.equal(withCompletionGrant(file, lane, () => {
+  assert.equal(fs.existsSync(`${file}.lockdir`), true, "grant remains locked while reserving lane");
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).actions.action.dispatchClaim, undefined, "lane reservation precedes global claim");
+  reserved = true;
+}, () => {
+  assert.equal(reserved, true);
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).actions.action.dispatchClaim.status, "pending", "global claim persists before launch");
+  launched++;
+  return true;
+}, { validate: () => true, verifyWorktree: () => true }), true);
+assert.equal(launched, 1);
+assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).actions.action.dispatchClaim.status, "launched");
+assert.equal(withCompletionGrant(file, lane, () => { reserved = false; }, () => { launched++; }, { validate: () => true, verifyWorktree: () => true }), false, "a second execution-state file cannot reuse the same WorkState action");
+assert.equal(reserved, true);
+assert.equal(launched, 1);
+assert.equal(fs.existsSync(`${file}.lockdir`), false);
+fs.writeFileSync(file, JSON.stringify({ ...runtime, records: { "cto:civicline": { ...runtime.records["cto:civicline"], phase: "blocked" } } }));
+assert.equal(withCompletionGrant(file, lane, () => { reserved = false; }, () => { launched++; }, { validate: () => true, verifyWorktree: () => true }), false);
+assert.equal(reserved, true);
+assert.equal(launched, 1, "revoked grant cannot launch");
+const checkout = fs.mkdtempSync(path.join(os.tmpdir(), "completion-head-"));
+execFileSync("git", ["init", "-q", checkout]);
+execFileSync("git", ["-C", checkout, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-q", "--allow-empty", "-m", "fixture"]);
+const actualHead = execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+assert.equal(verifyExactWorktree({ worktree: checkout, headSha: actualHead }), true);
+fs.writeFileSync(path.join(checkout, "untracked.txt"), "drift");
+assert.equal(verifyExactWorktree({ worktree: checkout, headSha: actualHead }), false, "dirty checkout cannot launch");
+fs.rmSync(path.join(checkout, "untracked.txt"));
+assert.equal(verifyExactWorktree({ worktree: checkout, headSha: "b".repeat(40) }), false, "wrong HEAD cannot launch");
+const actualLane = { ...lane, headSha: actualHead, worktree: checkout, workStateVersion: 1,
+  nextAction: { argv: ["codex", "review", "--commit", actualHead] } };
+const actualDigest = crypto.createHash("sha256").update(JSON.stringify(actualLane.nextAction.argv)).digest("hex");
+const fullRuntime = emptyRuntime();
+const now = "2026-09-28T20:00:00Z";
+recordEvidence(fullRuntime, { id: "failure", source: "synthetic command receipt", artifact: checkout, status: "verified_command_failure", excerpts: [], facts: [{ schema: "command_failure/v1", laneId: lane.id, issue: 2712, repository: lane.repository, headSha: actualHead, commandStatus: "error" }] }, now);
+recordEvidence(fullRuntime, { id: "grant", source: "synthetic grant proof", artifact: checkout, status: "verified", excerpts: [], facts: [] }, now);
+registerWorkState(fullRuntime, { id: "cto:civicline", objective: "Review synthetic head", acceptanceTests: ["exact-head review"], authorityBoundary: { allowedActions: ["retry_safe"] }, phase: "active", nextAction: "Review exact head", owner: "civicline-cto", evidenceRefs: ["failure", "grant"], retryPolicy: { maxAttempts: 1 } }, now);
+fullRuntime.actions.grant = { id: "grant", workStateId: "cto:civicline", stateVersion: 1, class: "retry_safe", status: "prepared", description: JSON.stringify({ ...grant, headSha: actualHead, actionDigest: actualDigest }) };
+assert.equal(validateRuntime(fullRuntime), true);
+const fullFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "completion-full-runtime-")), "work-state.json");
+fs.writeFileSync(fullFile, JSON.stringify(fullRuntime));
+assert.equal(recoverUnclaimedReservation(fullFile, actualLane, () => {
+  assert.equal(fs.existsSync(`${fullFile}.lockdir`), true, "rollback holds canonical WorkState lock");
+}), true, "unclaimed exact grant is recoverable");
+assert.equal(withCompletionGrant(fullFile, actualLane, () => true, () => true), true, "real runtime and clean checkout authorize one launch");
+assert.equal(recoverUnclaimedReservation(fullFile, actualLane, () => { throw new Error("claimed grant rolled back"); }), false, "claimed grant cannot be recovered");
+assert.equal(withCompletionGrant(fullFile, actualLane, () => true, () => true), false, "durable claim blocks second state file");
+console.log("completion WorkState grant tests: passed");

@@ -42,6 +42,25 @@ function run(...args) { return JSON.parse(execFileSync("node", [harness, ...args
 
 const initial = run("status");
 assert.equal(initial.lanes[0].phase, "implementing");
+const liveState = JSON.parse(fs.readFileSync(state, "utf8"));
+liveState.completionLanes = [{
+  id: "synthetic-completion-2712", issue: 2712, owner: "claude", sessionName: "missing-synthetic-session",
+  worktree: temp, completionPredicate: "independent exact-head review", deadlineAt: "2026-08-16T14:00:00Z",
+  state: "executing", retry: { attempts: 0, maxAttempts: 1 }, reviewRequired: true,
+  headSha: "a".repeat(40), completedEvidence: true, lastCommand: { status: "error", evidenceRef: "synthetic-failure", at: "2026-08-15T12:44:00Z" },
+  nextAction: { kind: "independent_review", registrationId: "synthetic-review", reviewer: "codex", headSha: "a".repeat(40), argv: ["/bin/echo", "review"] }
+}];
+fs.writeFileSync(state, `${JSON.stringify(liveState, null, 2)}\n`);
+const tmuxStubDir = path.join(temp, "tmux-stub");
+fs.mkdirSync(tmuxStubDir);
+fs.writeFileSync(path.join(tmuxStubDir, "tmux"), '#!/bin/sh\nif [ "$1" = "capture-pane" ]; then printf "$ \\n"; exit 0; fi\nexit 1\n', { mode: 0o755 });
+const originalPath = process.env.PATH;
+process.env.PATH = `${tmuxStubDir}:${originalPath}`;
+const liveWatch = run("watch", "--apply", "--skip-tmux", "--at", "2026-08-15T12:44:01Z");
+assert.equal(liveWatch.findings.some((finding) => finding.kind === "completion_independent_review_action_unregistered"), true);
+assert.equal(JSON.parse(fs.readFileSync(state, "utf8")).completionLanes[0].state, "blocked", "live watch must hold stale-completion/error conflict");
+assert.equal(run("watch", "--apply", "--skip-tmux", "--at", "2026-08-15T12:44:02Z").findings.some((finding) => finding.kind.startsWith("completion_")), false, "held lane is not redispatched");
+process.env.PATH = originalPath;
 const migrated = run("migrate-workstates", "--at", "2026-08-15T12:45:00-04:00");
 assert.deepEqual(migrated.migrated, [{ laneId: "civicline-2540", workStateId: "lane:civicline-2540" }]);
 const migratedRuntime = JSON.parse(fs.readFileSync(`${state}.work-state.json`, "utf8"));
