@@ -15,10 +15,14 @@ try {
   git(repo, "config", "user.name", "Eval"); git(repo, "config", "user.email", "eval@example.invalid");
   fs.writeFileSync(path.join(repo, "watch.mjs"), "console.log('v1')\n");
   git(repo, "add", "."); git(repo, "commit", "-qm", "old-runtime");
-  const candidate = git(repo, "rev-parse", "HEAD");
-  git(repo, "worktree", "add", "-q", "--detach", old, candidate);
+  const unrelated = git(repo, "rev-parse", "HEAD");
+  git(repo, "worktree", "add", "-q", "--detach", old, unrelated);
+  git(repo, "checkout", "-qb", "candidate");
   fs.writeFileSync(path.join(repo, "watch.mjs"), "console.log('v2')\n");
-  git(repo, "commit", "-qam", "merged-runtime");
+  git(repo, "commit", "-qam", "candidate-runtime");
+  const candidate = git(repo, "rev-parse", "HEAD");
+  git(repo, "checkout", "-q", "main");
+  git(repo, "merge", "--no-ff", "-qm", "merge-candidate", "candidate");
   const mergedHead = git(repo, "rev-parse", "HEAD");
   const evidence = { entrypoint: path.join(repo, "watch.mjs"), mergedHead,
     ci: { status: "passed", headSha: candidate }, review: { status: "passed", headSha: candidate },
@@ -32,6 +36,8 @@ try {
   git(repo, "checkout", "--", "watch.mjs");
   assert.equal(verifyRuntimeActivation({ ...evidence, review: { status: "missing", headSha: candidate } }).reason, "evidence_unbound");
   assert.equal(verifyRuntimeActivation({ ...evidence, ci: { status: "passed", headSha: mergedHead } }).reason, "evidence_unbound");
+  assert.equal(verifyRuntimeActivation({ ...evidence, ci: { status: "passed", headSha: unrelated },
+    review: { status: "passed", headSha: unrelated } }).reason, "candidate_not_merged");
   assert.equal(verifyRuntimeActivation({ ...evidence, firstCheck: { status: "failed", headSha: mergedHead } }).reason, "evidence_unbound");
   assert.equal(verifyRuntimeActivation({ ...evidence, entrypoint: path.join(temp, "missing") }).reason, "runtime_unavailable");
   console.log("merge-to-runtime eval: clean bound checkout passes; stale link, dirty checkout, and bad evidence hold");
