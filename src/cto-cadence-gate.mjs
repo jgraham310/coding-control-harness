@@ -11,6 +11,8 @@ export function evaluateCtoCadence(observation, prior = null, { maxNoProgressTur
       !Number.isInteger(maxNoProgressTurns) || maxNoProgressTurns < 1) {
     return { fire: false, reason: "invalid_observation", state: prior };
   }
+  if (prior && observation.progressRevision < prior.progressRevision)
+    return { fire: false, reason: "stale_revision", state: prior };
   const fingerprint = crypto.createHash("sha256").update(JSON.stringify(FIELDS.map((field) => observation[field]))).digest("hex");
   const sameProgress = prior?.progressRevision === observation.progressRevision;
   const noProgressTurns = sameProgress ? (prior?.noProgressTurns ?? 0) : 0;

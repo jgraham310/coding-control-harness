@@ -32,5 +32,7 @@ assert.equal(evaluateCtoCadence({ ...held, phase: "active", head: "changed-again
   "verified progress resets the bounded budget");
 assert.equal(evaluateCtoCadence({ ...held, phase: "active", head: "changed", progressRevision: 2 }, second.state).fire, true,
   "revision-only verified progress is material");
+assert.equal(evaluateCtoCadence({ ...held, phase: "active", head: "stale", progressRevision: 0 }, second.state).reason,
+  "stale_revision", "regressing revisions cannot refresh the model-turn budget");
 assert.equal(evaluateCtoCadence({ ...held, blocker: undefined }, prior).reason, "invalid_observation");
 console.log("CTO no-progress cadence eval: 23/23 blocked ticks suppressed; bounded changed-state turns: passed");

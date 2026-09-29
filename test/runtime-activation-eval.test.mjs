@@ -48,5 +48,13 @@ try {
   "entrypoint_untracked");
   assert.equal(verifyRuntimeActivation({ ...evidence, firstCheck: { status: "failed", headSha: mergedHead } }).reason, "evidence_unbound");
   assert.equal(verifyRuntimeActivation({ ...evidence, entrypoint: path.join(temp, "missing") }).reason, "runtime_unavailable");
+  git(repo, "checkout", "-qb", "altered", unrelated);
+  git(repo, "merge", "--no-ff", "-qm", "merge-candidate", "candidate");
+  fs.writeFileSync(path.join(repo, "watch.mjs"), "console.log('unreviewed merge result')\n");
+  git(repo, "add", "watch.mjs");
+  git(repo, "commit", "--amend", "-qm", "unreviewed-runtime");
+  const unreviewedHead = git(repo, "rev-parse", "HEAD");
+  assert.equal(verifyRuntimeActivation({ ...evidence, mergedHead: unreviewedHead,
+    firstCheck: { status: "passed", headSha: unreviewedHead } }).reason, "merged_tree_unreviewed");
   console.log("merge-to-runtime eval: clean bound checkout passes; stale link, dirty checkout, and bad evidence hold");
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }

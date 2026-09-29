@@ -20,6 +20,9 @@ export function verifyRuntimeActivation({ entrypoint, mergedHead, ci, review, fi
     // parent is the old base and must never substitute for review evidence.
     if (ci.headSha !== mergedHead && parents[1] !== ci.headSha)
       return { ok: false, reason: "candidate_not_merged" };
+    if (ci.headSha !== mergedHead && git(root, "rev-parse", `${ci.headSha}^{tree}`) !==
+        git(root, "rev-parse", `${mergedHead}^{tree}`))
+      return { ok: false, reason: "merged_tree_unreviewed" };
     const relative = path.relative(root, real);
     if (relative.startsWith(`..${path.sep}`) || relative === ".." ||
         !git(root, "ls-files", "--", relative))
