@@ -15,11 +15,8 @@ export function verifyRuntimeActivation({ entrypoint, mergedHead, ci, review, fi
     if (!fs.statSync(real).isFile()) return { ok: false, reason: "entrypoint_not_file" };
     const root = git(path.dirname(real), "rev-parse", "--show-toplevel");
     if (git(root, "rev-parse", "HEAD") !== mergedHead) return { ok: false, reason: "stale_runtime_head" };
-    const parents = git(root, "rev-list", "--parents", "-n", "1", mergedHead).split(" ").slice(1);
-    // A merge commit's second parent is the reviewed candidate. The first
-    // parent is the old base and must never substitute for review evidence.
-    if (ci.headSha !== mergedHead && parents[1] !== ci.headSha)
-      return { ok: false, reason: "candidate_not_merged" };
+    // The reviewed tree must be byte-for-byte the runtime tree. This also
+    // accepts squash merges, whose reviewed candidate is not a parent.
     if (ci.headSha !== mergedHead && git(root, "rev-parse", `${ci.headSha}^{tree}`) !==
         git(root, "rev-parse", `${mergedHead}^{tree}`))
       return { ok: false, reason: "merged_tree_unreviewed" };
