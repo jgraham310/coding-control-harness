@@ -22,6 +22,21 @@ decision = reconcileLane({ ...next, retry: { attempts: 2, maxAttempts: 2 } }, { 
 assert.equal(decision.action, "hold");
 assert.equal(decision.reason, "retry_budget_exhausted");
 
+const failedFixes = [1, 2, 3].map((n) => ({ hypothesis: `hypothesis-${n}`, failureEvidenceRef: `failed-fix-${n}`, outcome: "failed" }));
+assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes.slice(0, 2) } },
+  { lastCommand: { status: "rejected", evidenceRef: "failure-1" } }, { now: at }).action, "redispatch_registered_action");
+decision = reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes } },
+  { lastCommand: { status: "rejected", evidenceRef: "failure-1" } }, { now: at });
+assert.equal(decision.action, "hold");
+assert.equal(decision.reason, "architecture_reassessment_required");
+assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes } },
+  { completedEvidence: true }, { now: at }).action, "verify_completion", "terminal evidence is not another fix attempt");
+assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: [...failedFixes.slice(0, 2), failedFixes[0]] } },
+  { lastCommand: { status: "rejected", evidenceRef: "failure-1" } }, { now: at }).action, "redispatch_registered_action",
+  "duplicate failure evidence cannot manufacture a third failed fix");
+assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: [{ hypothesis: "guess", outcome: "failed" }] } },
+  { pane: "executing" }, { now: at }).reason, "invalid_lane_contract");
+
 decision = reconcileLane(lane, { lastCommand: { status: "rejected", evidenceRef: "failure-1" } }, { now: at });
 assert.equal(decision.action, "redispatch_registered_action");
 assert.equal(decision.reason, "command_rejected");

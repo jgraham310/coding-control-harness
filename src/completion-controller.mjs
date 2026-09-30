@@ -29,6 +29,11 @@ export function validateLane(lane) {
   }
   if (!Number.isInteger(lane.retry?.maxAttempts) || lane.retry.maxAttempts < 0) errors.push("retry.maxAttempts must be a non-negative integer");
   if (!Number.isInteger(lane.retry?.attempts) || lane.retry.attempts < 0) errors.push("retry.attempts must be a non-negative integer");
+  if (lane.debugging !== undefined && (!Array.isArray(lane.debugging?.fixAttempts)
+    || lane.debugging.fixAttempts.some((attempt) => !text(attempt?.hypothesis)
+      || !text(attempt?.failureEvidenceRef) || attempt?.outcome !== "failed"))) {
+    errors.push("debugging.fixAttempts must contain evidenced failed hypotheses");
+  }
   return { valid: errors.length === 0, errors };
 }
 
@@ -66,6 +71,11 @@ export function reconcileLane(lane, observation, { now = new Date().toISOString(
   }
   if (observed === "completed") return { state: "completed", action: "verify_completion", reason: "completion_evidence_observed" };
   if (observed === "blocked") return { state: "blocked", action: "hold", reason: text(observation.blockedReason) };
+  // A failed fix is not a command retry. Three distinct evidenced failures
+  // require reassessing the architecture before another remediation dispatch.
+  if (new Set((lane.debugging?.fixAttempts ?? []).map((attempt) => attempt.failureEvidenceRef)).size >= 3) {
+    return { state: "blocked", action: "hold", reason: "architecture_reassessment_required", priority: "immediate" };
+  }
   if (ACTIVE.has(observed)) return { state: observed, action: "heartbeat", reason: "lane_active" };
   if (observed === "idle_prompt" || observed === "process_exited") return { state: "blocked", action: "hold", reason: "outcome_unverified", observed, priority: "immediate" };
   if (RECOVERABLE_FAILURES.has(observed)) {
