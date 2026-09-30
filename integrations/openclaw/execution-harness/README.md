@@ -105,6 +105,8 @@ Persist state before dispatch, at every material evidence transition, and before
 
 ### Claude Code implementation lanes
 
+For a defect, record each distinct failed fix hypothesis and its failure-evidence reference in the lane's `debugging.fixAttempts`. Command retries are separate and do not count as failed fixes. After three evidenced failed fixes, the completion controller holds further remediation with `architecture_reassessment_required`; trace the cause and reassess the architecture before issuing a new authorized lane contract. Escalate only a consequential architecture change to Jason.
+
 For a trusted, isolated repository worktree, dispatch Claude Code in non-interactive mode. It must proceed through implementation, focused tests, PR preparation, and any safe fixes without asking for routine approval. The standard launch form is:
 
 ```sh
