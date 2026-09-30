@@ -64,17 +64,16 @@ export function reconcileLane(lane, observation, { now = new Date().toISOString(
   if (TERMINAL.has(lane.state)) return { state: lane.state, action: "none", reason: "terminal_lane" };
   if (Date.parse(lane.deadlineAt) <= Date.parse(now)) return { state: "blocked", action: "hold", reason: "deadline_exceeded" };
   const observed = classifyObservation(observation);
+  if (observed === "completed") return { state: "completed", action: "verify_completion", reason: "completion_evidence_observed" };
+  if (observed === "blocked") return { state: "blocked", action: "hold", reason: text(observation.blockedReason) };
+  // Count attempted fixes, not command retries or repeat evidence for one hypothesis.
+  if (new Set((lane.debugging?.fixAttempts ?? []).map((attempt) => attempt.hypothesis)).size >= 3) {
+    return { state: "blocked", action: "hold", reason: "architecture_reassessment_required", priority: "immediate" };
+  }
   if (observed === "lane_error" || (observed === "command_rejected" && observation.pane === "executing" && !lane.reviewRequired)) {
     const reason = observed === "lane_error" ? text(observation.laneError) : "command_rejected";
     if (lane.state === "recovering" && lane.lastError?.reason === reason) return { state: "recovering", action: "none", reason: "error_already_in_triage" };
     return { state: "recovering", action: "triage_error", reason, priority: "immediate" };
-  }
-  if (observed === "completed") return { state: "completed", action: "verify_completion", reason: "completion_evidence_observed" };
-  if (observed === "blocked") return { state: "blocked", action: "hold", reason: text(observation.blockedReason) };
-  // A failed fix is not a command retry. Three distinct evidenced failures
-  // require reassessing the architecture before another remediation dispatch.
-  if (new Set((lane.debugging?.fixAttempts ?? []).map((attempt) => attempt.failureEvidenceRef)).size >= 3) {
-    return { state: "blocked", action: "hold", reason: "architecture_reassessment_required", priority: "immediate" };
   }
   if (ACTIVE.has(observed)) return { state: observed, action: "heartbeat", reason: "lane_active" };
   if (observed === "idle_prompt" || observed === "process_exited") return { state: "blocked", action: "hold", reason: "outcome_unverified", observed, priority: "immediate" };

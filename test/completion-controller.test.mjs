@@ -30,6 +30,14 @@ decision = reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes } },
 assert.equal(decision.action, "hold");
 assert.equal(decision.reason, "architecture_reassessment_required");
 assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes } },
+  { laneError: "MODULE_NOT_FOUND" }, { now: at }).reason, "architecture_reassessment_required",
+  "a fresh lane error cannot bypass the three-fix hold");
+assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes } },
+  { pane: "executing", lastCommand: { status: "rejected", evidenceRef: "failure-4" } }, { now: at }).reason,
+  "architecture_reassessment_required", "command rejection cannot bypass the hold");
+assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes.map((attempt, n) => ({ ...attempt, hypothesis: "same-fix", failureEvidenceRef: `rerun-${n}` })) } },
+  { pane: "executing" }, { now: at }).action, "heartbeat", "retesting one fix is not three distinct failed fixes");
+assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes } },
   { completedEvidence: true }, { now: at }).action, "verify_completion", "terminal evidence is not another fix attempt");
 assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: [...failedFixes.slice(0, 2), failedFixes[0]] } },
   { lastCommand: { status: "rejected", evidenceRef: "failure-1" } }, { now: at }).action, "redispatch_registered_action",
