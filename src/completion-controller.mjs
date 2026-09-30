@@ -67,7 +67,7 @@ export function reconcileLane(lane, observation, { now = new Date().toISOString(
   if (observed === "completed") return { state: "completed", action: "verify_completion", reason: "completion_evidence_observed" };
   if (observed === "blocked") return { state: "blocked", action: "hold", reason: text(observation.blockedReason) };
   // Count attempted fixes, not command retries or repeat evidence for one hypothesis.
-  if (new Set((lane.debugging?.fixAttempts ?? []).map((attempt) => attempt.hypothesis)).size >= 3) {
+  if (new Set((lane.debugging?.fixAttempts ?? []).map((attempt) => text(attempt.hypothesis).toLowerCase())).size >= 3) {
     return { state: "blocked", action: "hold", reason: "architecture_reassessment_required", priority: "immediate" };
   }
   if (observed === "lane_error" || (observed === "command_rejected" && observation.pane === "executing" && !lane.reviewRequired)) {

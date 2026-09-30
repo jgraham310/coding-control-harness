@@ -37,6 +37,8 @@ assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes } },
   "architecture_reassessment_required", "command rejection cannot bypass the hold");
 assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes.map((attempt, n) => ({ ...attempt, hypothesis: "same-fix", failureEvidenceRef: `rerun-${n}` })) } },
   { pane: "executing" }, { now: at }).action, "heartbeat", "retesting one fix is not three distinct failed fixes");
+assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes.map((attempt, n) => ({ ...attempt, hypothesis: ["cache invalidation", " Cache Invalidation ", "CACHE INVALIDATION"][n] })) } },
+  { pane: "executing" }, { now: at }).action, "heartbeat", "formatting differences cannot inflate the failed-fix count");
 assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: failedFixes } },
   { completedEvidence: true }, { now: at }).action, "verify_completion", "terminal evidence is not another fix attempt");
 assert.equal(reconcileLane({ ...lane, debugging: { fixAttempts: [...failedFixes.slice(0, 2), failedFixes[0]] } },
