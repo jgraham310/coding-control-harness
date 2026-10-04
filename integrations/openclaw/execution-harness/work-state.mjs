@@ -71,6 +71,7 @@ function validateRecord(record, runtime) {
       (record.id !== "cto:civicline" || !record.evidenceRefs.includes("civicline-merge-staging-grant-20260928") || runtime.evidence["civicline-merge-staging-grant-20260928"]?.status !== "verified")) fail(`WorkState ${record.id} lacks bounded operation grant evidence.`);
   if (record.authorizedOperations?.includes("uat_test_implementation") &&
       (record.id !== "cto:civicline" || record.owner !== "cos" || !record.evidenceRefs.includes("civicline-uat-test-grant-20261004") || runtime.evidence["civicline-uat-test-grant-20261004"]?.status !== "verified")) fail(`WorkState ${record.id} lacks COS UAT test-only grant evidence.`);
+  if (record.authorizedOperations?.includes("uat_test_implementation") && record.authorizedOperations.length !== 1) fail(`WorkState ${record.id} cannot combine UAT test-only with merge or staging authority.`);
 }
 
 export function registerWorkState(runtime, input, at) {

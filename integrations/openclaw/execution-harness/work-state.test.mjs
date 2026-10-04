@@ -38,6 +38,7 @@ const granted=transitionWorkState(civic,"cto:civicline",1,{authorizedOperations:
 assert.deepEqual(granted.record.authorizedOperations,["merge_green_pr"]);
 recordEvidence(civic,{id:"civicline-uat-test-grant-20261004",source:"Jason",artifact:"signal:uat-test-only",status:"verified"},at);
 const testOnlyAction={id:"uat-test-grant",idempotencyKey:"uat-test-grant",class:"internal_update",description:"COS test-only implementation"};
+assert.throws(()=>transitionWorkState(civic,"cto:civicline",2,{authorizedOperations:["uat_test_implementation","merge_green_pr"],owner:"cos",evidenceRefs:["deployment","civicline-merge-staging-grant-20260928","civicline-uat-test-grant-20261004"]},testOnlyAction,"mixed grants",at),/cannot combine UAT test-only/);
 assert.throws(()=>transitionWorkState(civic,"cto:civicline",2,{authorizedOperations:["uat_test_implementation"],owner:"cos",evidenceRefs:["deployment"]},testOnlyAction,"missing UAT grant",at),/COS UAT test-only grant evidence/);
 const testOnly=transitionWorkState(civic,"cto:civicline",2,{authorizedOperations:["uat_test_implementation"],owner:"cos",evidenceRefs:["deployment","civicline-uat-test-grant-20261004"]},testOnlyAction,"bounded UAT grant",at);
 assert.deepEqual(testOnly.record.authorizedOperations,["uat_test_implementation"]);
