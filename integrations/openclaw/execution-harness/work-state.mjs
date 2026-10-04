@@ -8,7 +8,7 @@
 import crypto from "node:crypto";
 
 const ACTION_CLASSES = new Set(["inspect", "observe", "draft", "internal_update", "retry_safe"]);
-const BOUNDED_OPERATIONS = new Set(["merge_green_pr", "stage_release"]);
+const BOUNDED_OPERATIONS = new Set(["merge_green_pr", "stage_release", "uat_test_implementation"]);
 const TERMINAL_ACTIONS = new Set(["succeeded", "failed", "cancelled"]);
 const PHASES = new Set(["identified", "active", "waiting", "blocked", "verified", "completed"]);
 const TRANSITIONS = new Map([
@@ -67,7 +67,10 @@ function validateRecord(record, runtime) {
   if (record.retryPolicy !== null && record.retryPolicy !== undefined && typeof record.retryPolicy !== "object") fail(`WorkState ${record.id}.retryPolicy must be an object or null.`);
   for (const evidenceRef of record.evidenceRefs) if (!runtime.evidence[evidenceRef]) fail(`WorkState ${record.id} references missing evidence ${evidenceRef}.`);
   if (record.currentDeploymentEvidenceRef != null && (!record.evidenceRefs.includes(record.currentDeploymentEvidenceRef) || !runtime.evidence[record.currentDeploymentEvidenceRef])) fail(`WorkState ${record.id} has unselected deployment evidence.`);
-  if (record.authorizedOperations?.length && (record.id !== "cto:civicline" || !record.evidenceRefs.includes("civicline-merge-staging-grant-20260928") || runtime.evidence["civicline-merge-staging-grant-20260928"]?.status !== "verified")) fail(`WorkState ${record.id} lacks bounded operation grant evidence.`);
+  if (record.authorizedOperations?.some((operation) => operation === "merge_green_pr" || operation === "stage_release") &&
+      (record.id !== "cto:civicline" || !record.evidenceRefs.includes("civicline-merge-staging-grant-20260928") || runtime.evidence["civicline-merge-staging-grant-20260928"]?.status !== "verified")) fail(`WorkState ${record.id} lacks bounded operation grant evidence.`);
+  if (record.authorizedOperations?.includes("uat_test_implementation") &&
+      (record.id !== "cto:civicline" || record.owner !== "cos" || !record.evidenceRefs.includes("civicline-uat-test-grant-20261004") || runtime.evidence["civicline-uat-test-grant-20261004"]?.status !== "verified")) fail(`WorkState ${record.id} lacks COS UAT test-only grant evidence.`);
 }
 
 export function registerWorkState(runtime, input, at) {
